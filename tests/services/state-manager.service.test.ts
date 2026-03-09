@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { StateManager } from '../../src/services/state-manager.js';
+import { StateManager } from '../../src/services/state-manager.service.js';
 import { PipelineState, INITIAL_STAGES } from '../../src/types/state.types.js';
 import { mkdir, rm, access } from 'fs/promises';
 import { resolve } from 'path';

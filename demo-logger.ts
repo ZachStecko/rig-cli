@@ -3,7 +3,7 @@
  * Visual demo of the logger service.
  * Run with: npm run demo-logger
  */
-import { Logger } from './src/services/logger.js';
+import { Logger } from './src/services/logger.service.js';
 
 const logger = new Logger();
 

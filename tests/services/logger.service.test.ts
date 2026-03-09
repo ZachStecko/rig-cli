@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { Logger } from '../../src/services/logger.js';
+import { Logger } from '../../src/services/logger.service.js';
 import chalk from 'chalk';
 
 describe('Logger', () => {

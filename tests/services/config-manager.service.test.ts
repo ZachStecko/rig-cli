@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ConfigManager } from '../../src/services/config-manager.js';
+import { ConfigManager } from '../../src/services/config-manager.service.js';
 import { DEFAULT_CONFIG } from '../../src/types/config.types.js';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { resolve } from 'path';

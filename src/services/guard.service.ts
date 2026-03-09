@@ -1,6 +1,6 @@
 import { GitService } from './git.service.js';
 import { GitHubService } from './github.service.js';
-import { StateManager } from './state-manager.js';
+import { StateManager } from './state-manager.service.js';
 import { GuardError } from '../types/error.types.js';
 import { exec } from '../utils/shell.js';
 

@@ -1,5 +1,5 @@
 import { describe, it } from 'vitest';
-import { Logger } from '../../src/services/logger.js';
+import { Logger } from '../../src/services/logger.service.js';
 
 /**
  * Visual confirmation tests - these actually output to the terminal

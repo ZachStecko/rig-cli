@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GuardService } from '../../src/services/guard.service.js';
 import { GitService } from '../../src/services/git.service.js';
 import { GitHubService } from '../../src/services/github.service.js';
-import { StateManager } from '../../src/services/state-manager.js';
+import { StateManager } from '../../src/services/state-manager.service.js';
 import { GuardError } from '../../src/types/error.types.js';
 import * as shell from '../../src/utils/shell.js';
 

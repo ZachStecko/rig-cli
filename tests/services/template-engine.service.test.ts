@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { TemplateEngine } from '../../src/services/template-engine.js';
+import { TemplateEngine } from '../../src/services/template-engine.service.js';
 import { writeFile, unlink, mkdir } from 'fs/promises';
 import { resolve } from 'path';
 import { tmpdir } from 'os';
