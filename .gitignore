@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.tsbuildinfo
+
+# rig runtime artifacts
+.rig-state.json
+.rig-logs/
+.rig-demos/
+.rig-reviews/
+
+# OS
+.DS_Store
+
+
+plan.md
