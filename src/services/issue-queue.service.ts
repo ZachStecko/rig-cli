@@ -14,7 +14,7 @@ export interface FetchOptions {
 /**
  * IssueQueueService fetches, filters, scores, and sorts GitHub issues.
  *
- * Scoring formula: phaseScore * 10000 + priorityScore * 1000 + issueNumber
+ * Scoring formula: phaseScore * 10000 + priorityScore * 1000 - issueNumber
  * - Lower phase numbers score higher (Phase 1 > Phase 2 > Phase 3)
  * - Higher priorities score higher (p0 > p1 > p2)
  * - Lower issue numbers score higher within same phase+priority
