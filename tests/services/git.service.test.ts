@@ -526,4 +526,194 @@ describe('GitService', () => {
       expect(result).toBe('');
     });
   });
+
+  describe('changedFilesCountVsMaster', () => {
+    it('returns count of changed files against main', async () => {
+      // First call: check main exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Second call: get changed files
+      mockExec.mockResolvedValueOnce({
+        stdout: 'src/file1.ts\nsrc/file2.ts\nsrc/file3.ts\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.changedFilesCountVsMaster();
+
+      expect(result).toBe(3);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --name-only main...HEAD')
+      );
+    });
+
+    it('returns 0 when no files changed', async () => {
+      // First call: check main exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Second call: no files
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.changedFilesCountVsMaster();
+
+      expect(result).toBe(0);
+    });
+
+    it('uses master when main does not exist', async () => {
+      // First call: main does not exist
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: "fatal: Needed a single revision",
+        exitCode: 128,
+      });
+
+      // Second call: master exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'def456\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Third call: get changed files
+      mockExec.mockResolvedValueOnce({
+        stdout: 'src/file1.ts\nsrc/file2.ts\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.changedFilesCountVsMaster();
+
+      expect(result).toBe(2);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --name-only master...HEAD')
+      );
+    });
+  });
+
+  describe('diffLinesVsMaster', () => {
+    it('returns total lines changed against main', async () => {
+      // First call: check main exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Second call: get diff stat
+      mockExec.mockResolvedValueOnce({
+        stdout: ' src/file1.ts | 10 ++++++++++\n src/file2.ts | 5 +++++\n 2 files changed, 123 insertions(+), 45 deletions(-)\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.diffLinesVsMaster();
+
+      expect(result).toBe(168); // 123 + 45
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --stat main...HEAD')
+      );
+    });
+
+    it('returns 0 when no changes', async () => {
+      // First call: check main exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Second call: no diff
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.diffLinesVsMaster();
+
+      expect(result).toBe(0);
+    });
+
+    it('handles insertions only', async () => {
+      // First call: check main exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Second call: insertions only
+      mockExec.mockResolvedValueOnce({
+        stdout: ' src/file1.ts | 50 ++++++++++++++++++++++++++++++++++++++++++++++++++\n 1 file changed, 50 insertions(+)\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.diffLinesVsMaster();
+
+      expect(result).toBe(50);
+    });
+
+    it('handles deletions only', async () => {
+      // First call: check main exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Second call: deletions only
+      mockExec.mockResolvedValueOnce({
+        stdout: ' src/file1.ts | 30 ------------------------------\n 1 file changed, 30 deletions(-)\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.diffLinesVsMaster();
+
+      expect(result).toBe(30);
+    });
+
+    it('uses master when main does not exist', async () => {
+      // First call: main does not exist
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: "fatal: Needed a single revision",
+        exitCode: 128,
+      });
+
+      // Second call: master exists
+      mockExec.mockResolvedValueOnce({
+        stdout: 'def456\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      // Third call: get diff stat
+      mockExec.mockResolvedValueOnce({
+        stdout: ' src/file1.ts | 20 ++++++++++++++++++++\n 1 file changed, 20 insertions(+)\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.diffLinesVsMaster();
+
+      expect(result).toBe(20);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --stat master...HEAD')
+      );
+    });
+  });
 });

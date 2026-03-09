@@ -164,6 +164,56 @@ export class GitService {
   }
 
   /**
+   * Counts total changed files in current branch vs master/main.
+   * Includes new, modified, and deleted files.
+   *
+   * @returns Number of changed files
+   * @throws Error if git command fails
+   */
+  async changedFilesCountVsMaster(): Promise<number> {
+    const master = await this.getMasterBranchName();
+    const result = await this.git(`diff --name-only ${master}...HEAD`);
+
+    const files = result.stdout
+      .trim()
+      .split('\n')
+      .filter(line => line.length > 0);
+
+    return files.length;
+  }
+
+  /**
+   * Counts total lines changed (insertions + deletions) in current branch vs master/main.
+   * Parses the summary line from git diff --stat output.
+   *
+   * @returns Total lines changed (insertions + deletions)
+   * @throws Error if git command fails or output is unparseable
+   */
+  async diffLinesVsMaster(): Promise<number> {
+    const master = await this.getMasterBranchName();
+    const result = await this.git(`diff --stat ${master}...HEAD`);
+
+    // Parse the summary line (last line) which looks like:
+    // " 5 files changed, 123 insertions(+), 45 deletions(-)"
+    const lines = result.stdout.trim().split('\n');
+    if (lines.length === 0) {
+      return 0; // No changes
+    }
+
+    const summaryLine = lines[lines.length - 1];
+
+    // Extract insertions
+    const insertionMatch = summaryLine.match(/(\d+) insertion/);
+    const insertions = insertionMatch ? parseInt(insertionMatch[1], 10) : 0;
+
+    // Extract deletions
+    const deletionMatch = summaryLine.match(/(\d+) deletion/);
+    const deletions = deletionMatch ? parseInt(deletionMatch[1], 10) : 0;
+
+    return insertions + deletions;
+  }
+
+  /**
    * Gets the name of the master branch (main or master).
    * Checks which one exists in the repository.
    *
