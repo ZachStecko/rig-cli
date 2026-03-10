@@ -18,6 +18,7 @@ import { NextCommand } from './commands/next.command.js';
 import { ResetCommand } from './commands/reset.command.js';
 import { ImplementCommand } from './commands/implement.command.js';
 import { TestCommand } from './commands/test.command.js';
+import { DemoCommand } from './commands/demo.command.js';
 
 const program = new Command();
 
@@ -94,6 +95,17 @@ program
   .action(async (options) => {
     const testCommand = new TestCommand(logger, config, state, git, github, guard, projectRoot);
     await testCommand.execute(options);
+  });
+
+// Register demo command
+program
+  .command('demo')
+  .description('Record a demonstration of the implemented feature')
+  .option('--issue <number>', 'Record demo for a specific issue number')
+  .option('--component <name>', 'Component to demo (backend, frontend, devnet, fullstack)')
+  .action(async (options) => {
+    const demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
+    await demoCommand.execute(options);
   });
 
 program.parse();
