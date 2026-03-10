@@ -19,6 +19,7 @@ import { ResetCommand } from './commands/reset.command.js';
 import { ImplementCommand } from './commands/implement.command.js';
 import { TestCommand } from './commands/test.command.js';
 import { DemoCommand } from './commands/demo.command.js';
+import { PrCommand } from './commands/pr.command.js';
 
 const program = new Command();
 
@@ -106,6 +107,15 @@ program
   .action(async (options) => {
     const demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
     await demoCommand.execute(options);
+  });
+
+// Register pr command
+program
+  .command('pr')
+  .description('Create or update pull request for the current issue')
+  .action(async () => {
+    const prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
+    await prCommand.execute();
   });
 
 program.parse();
