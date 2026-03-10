@@ -16,6 +16,7 @@ import { StatusCommand } from './commands/status.command.js';
 import { QueueCommand } from './commands/queue.command.js';
 import { NextCommand } from './commands/next.command.js';
 import { ResetCommand } from './commands/reset.command.js';
+import { ImplementCommand } from './commands/implement.command.js';
 
 const program = new Command();
 
@@ -71,6 +72,17 @@ program
   .action(async () => {
     const resetCommand = new ResetCommand(logger, config, state, git, github, guard, projectRoot);
     await resetCommand.execute();
+  });
+
+// Register implement command
+program
+  .command('implement')
+  .description('Run Claude Code agent to implement the current issue')
+  .option('--issue <number>', 'Implement a specific issue number')
+  .option('--dry-run', 'Show what would be done without executing')
+  .action(async (options) => {
+    const implementCommand = new ImplementCommand(logger, config, state, git, github, guard, projectRoot);
+    await implementCommand.execute(options);
   });
 
 program.parse();
