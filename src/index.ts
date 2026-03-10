@@ -15,6 +15,7 @@ import { GuardService } from './services/guard.service.js';
 import { StatusCommand } from './commands/status.command.js';
 import { QueueCommand } from './commands/queue.command.js';
 import { NextCommand } from './commands/next.command.js';
+import { ResetCommand } from './commands/reset.command.js';
 
 const program = new Command();
 
@@ -61,6 +62,15 @@ program
   .action(async (options) => {
     const nextCommand = new NextCommand(logger, config, state, git, github, guard, projectRoot);
     await nextCommand.execute(options);
+  });
+
+// Register reset command
+program
+  .command('reset')
+  .description('Abort current pipeline and clean up state')
+  .action(async () => {
+    const resetCommand = new ResetCommand(logger, config, state, git, github, guard, projectRoot);
+    await resetCommand.execute();
   });
 
 program.parse();
