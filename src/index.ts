@@ -17,6 +17,7 @@ import { QueueCommand } from './commands/queue.command.js';
 import { NextCommand } from './commands/next.command.js';
 import { ResetCommand } from './commands/reset.command.js';
 import { ImplementCommand } from './commands/implement.command.js';
+import { TestCommand } from './commands/test.command.js';
 
 const program = new Command();
 
@@ -83,6 +84,16 @@ program
   .action(async (options) => {
     const implementCommand = new ImplementCommand(logger, config, state, git, github, guard, projectRoot);
     await implementCommand.execute(options);
+  });
+
+// Register test command
+program
+  .command('test')
+  .description('Run tests for the current implementation')
+  .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack)')
+  .action(async (options) => {
+    const testCommand = new TestCommand(logger, config, state, git, github, guard, projectRoot);
+    await testCommand.execute(options);
   });
 
 program.parse();
