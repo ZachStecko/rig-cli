@@ -13,6 +13,7 @@ import { GitService } from './services/git.service.js';
 import { GitHubService } from './services/github.service.js';
 import { GuardService } from './services/guard.service.js';
 import { StatusCommand } from './commands/status.command.js';
+import { QueueCommand } from './commands/queue.command.js';
 
 const program = new Command();
 
@@ -37,6 +38,17 @@ program
   .action(async () => {
     const statusCommand = new StatusCommand(logger, config, state, git, github, guard, projectRoot);
     await statusCommand.execute();
+  });
+
+// Register queue command
+program
+  .command('queue')
+  .description('Display prioritized issue backlog')
+  .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
+  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
+  .action(async (options) => {
+    const queueCommand = new QueueCommand(logger, config, state, git, github, guard, projectRoot);
+    await queueCommand.execute(options);
   });
 
 program.parse();
