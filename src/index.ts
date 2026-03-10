@@ -14,6 +14,7 @@ import { GitHubService } from './services/github.service.js';
 import { GuardService } from './services/guard.service.js';
 import { StatusCommand } from './commands/status.command.js';
 import { QueueCommand } from './commands/queue.command.js';
+import { NextCommand } from './commands/next.command.js';
 
 const program = new Command();
 
@@ -49,6 +50,17 @@ program
   .action(async (options) => {
     const queueCommand = new QueueCommand(logger, config, state, git, github, guard, projectRoot);
     await queueCommand.execute(options);
+  });
+
+// Register next command
+program
+  .command('next')
+  .description('Pick the next issue from the queue and initialize pipeline')
+  .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
+  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
+  .action(async (options) => {
+    const nextCommand = new NextCommand(logger, config, state, git, github, guard, projectRoot);
+    await nextCommand.execute(options);
   });
 
 program.parse();
