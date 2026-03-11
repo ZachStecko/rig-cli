@@ -6,6 +6,9 @@
  * as they are implemented.
  */
 import { Command } from 'commander';
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 import { Logger } from './services/logger.service.js';
 import { ConfigManager } from './services/config-manager.service.js';
 import { StateManager } from './services/state-manager.service.js';
@@ -24,12 +27,19 @@ import { ReviewCommand } from './commands/review.command.js';
 import { ShipCommand } from './commands/ship.command.js';
 import { BootstrapCommand } from './commands/bootstrap.command.js';
 
+// Read version from package.json
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const packageJson = JSON.parse(
+  readFileSync(join(__dirname, '../package.json'), 'utf-8')
+);
+
 const program = new Command();
 
 program
   .name('rig')
   .description('Automated issue-to-PR pipeline using Claude Code')
-  .version('0.1.0');
+  .version(packageJson.version);
 
 // Initialize services
 const projectRoot = process.cwd();
