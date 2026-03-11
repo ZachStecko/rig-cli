@@ -43,6 +43,25 @@ export interface PrConfig {
 }
 
 /**
+ * Configuration for a single component (frontend/backend).
+ */
+export interface ComponentConfig {
+  /** Path to component directory */
+  path: string;
+  /** Command to run tests for this component */
+  test_command: string;
+}
+
+/**
+ * Configuration for project components.
+ */
+export interface ComponentsConfig {
+  frontend?: ComponentConfig;
+  backend?: ComponentConfig;
+  infra?: ComponentConfig;
+}
+
+/**
  * Root configuration object loaded from .rig.yml.
  * All fields are optional in the YAML file; missing values use defaults.
  */
@@ -52,6 +71,7 @@ export interface RigConfig {
   test: TestConfig;
   demo: DemoConfig;
   pr: PrConfig;
+  components?: ComponentsConfig;
 }
 
 /**

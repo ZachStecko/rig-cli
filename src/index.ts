@@ -159,7 +159,7 @@ program
 program
   .command('bootstrap')
   .description('Set up test infrastructure (vitest, testing-library, msw)')
-  .option('--component <name>', 'Component to bootstrap (frontend, backend, fullstack)')
+  .option('--component <name>', 'Component to bootstrap (frontend, backend, infra, all)')
   .action(async (options) => {
     const bootstrapCommand = new BootstrapCommand(logger, config, state, git, github, guard, projectRoot);
     await bootstrapCommand.execute(options);

@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { exec } from 'child_process';
+import * as readline from 'readline';
 
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
@@ -19,8 +20,8 @@ const execAsync = promisify(exec);
  * Options for the bootstrap command.
  */
 export interface BootstrapOptions {
-  /** Target component to bootstrap (frontend, backend, fullstack) */
-  component?: 'frontend' | 'backend' | 'fullstack';
+  /** Target component to bootstrap (frontend, backend, infra, all) */
+  component?: 'frontend' | 'backend' | 'infra' | 'all';
 }
 
 /**
@@ -58,14 +59,44 @@ export class BootstrapCommand extends BaseCommand {
     this.logger.header('Bootstrap Test Infrastructure');
     console.log('');
 
-    const component = options.component || 'fullstack';
+    const component = options.component || await this.promptForComponent();
 
-    if (component === 'frontend' || component === 'fullstack') {
-      await this.bootstrapFrontend();
+    let frontendPath: string | null = null;
+    let backendPath: string | null = null;
+    let infraPath: string | null = null;
+
+    // Calculate total steps dynamically
+    const totalSteps =
+      (component === 'frontend' || component === 'all' ? 1 : 0) +
+      (component === 'backend' || component === 'all' ? 1 : 0) +
+      (component === 'infra' || component === 'all' ? 1 : 0);
+
+    let currentStep = 0;
+
+    if (component === 'frontend' || component === 'all') {
+      frontendPath = await this.promptForPath('frontend');
+      if (frontendPath) {
+        await this.bootstrapFrontend(frontendPath, ++currentStep, totalSteps);
+      }
     }
 
-    if (component === 'backend' || component === 'fullstack') {
-      await this.bootstrapBackend();
+    if (component === 'backend' || component === 'all') {
+      backendPath = await this.promptForPath('backend');
+      if (backendPath) {
+        await this.bootstrapBackend(backendPath, ++currentStep, totalSteps);
+      }
+    }
+
+    if (component === 'infra' || component === 'all') {
+      infraPath = await this.promptForPath('infra');
+      if (infraPath) {
+        await this.bootstrapInfra(infraPath, ++currentStep, totalSteps);
+      }
+    }
+
+    // Save paths to config if provided
+    if (frontendPath || backendPath || infraPath) {
+      await this.saveComponentPaths(frontendPath, backendPath, infraPath);
     }
 
     console.log('');
@@ -75,18 +106,14 @@ export class BootstrapCommand extends BaseCommand {
 
   /**
    * Bootstraps frontend test infrastructure.
+   *
+   * @param frontendPath - Path to frontend directory
+   * @param step - Current step number
+   * @param totalSteps - Total number of steps
    */
-  private async bootstrapFrontend(): Promise<void> {
-    this.logger.step(1, 4, 'Setting up frontend test infrastructure...');
+  private async bootstrapFrontend(frontendPath: string, step: number, totalSteps: number): Promise<void> {
+    this.logger.step(step, totalSteps, 'Setting up frontend test infrastructure...');
     console.log('');
-
-    const frontendPath = path.join(this.projectRoot || process.cwd(), 'frontend');
-
-    // Check if frontend directory exists
-    if (!fs.existsSync(frontendPath)) {
-      this.logger.warn('Frontend directory not found, skipping frontend setup');
-      return;
-    }
 
     // Step 1: Install dependencies
     this.logger.info('Installing frontend test dependencies...');
@@ -155,23 +182,38 @@ export class BootstrapCommand extends BaseCommand {
 
   /**
    * Bootstraps backend test infrastructure.
+   *
+   * @param _backendPath - Path to backend directory (unused, no setup needed for Go)
+   * @param step - Current step number
+   * @param totalSteps - Total number of steps
    */
-  private async bootstrapBackend(): Promise<void> {
-    this.logger.step(2, 4, 'Setting up backend test infrastructure...');
+  private async bootstrapBackend(_backendPath: string, step: number, totalSteps: number): Promise<void> {
+    this.logger.step(step, totalSteps, 'Setting up backend test infrastructure...');
     console.log('');
-
-    const backendPath = path.join(this.projectRoot || process.cwd(), 'backend');
-
-    // Check if backend directory exists
-    if (!fs.existsSync(backendPath)) {
-      this.logger.warn('Backend directory not found, skipping backend setup');
-      return;
-    }
 
     // Backend typically uses Go with built-in testing
     // Just verify the structure is correct
     this.logger.info('Backend uses Go testing (built-in), no additional setup needed');
     this.logger.dim('Ensure tests follow *_test.go naming convention');
+
+    console.log('');
+  }
+
+  /**
+   * Bootstraps infra test infrastructure.
+   *
+   * @param _infraPath - Path to infra directory (unused, no setup needed for IaC)
+   * @param step - Current step number
+   * @param totalSteps - Total number of steps
+   */
+  private async bootstrapInfra(_infraPath: string, step: number, totalSteps: number): Promise<void> {
+    this.logger.step(step, totalSteps, 'Setting up infra test infrastructure...');
+    console.log('');
+
+    // Infra typically uses IaC-specific testing tools
+    this.logger.info('Infra testing typically uses IaC-specific tools');
+    this.logger.dim('Example: terraform validate && terraform plan');
+    this.logger.dim('Configure test_command in .rig/config.json for your IaC tool');
 
     console.log('');
   }
@@ -315,5 +357,185 @@ export const handlers = [
     }
 
     await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+  }
+
+  /**
+   * Prompts user to select component type.
+   *
+   * @returns The selected component type
+   */
+  private async promptForComponent(): Promise<'frontend' | 'backend' | 'infra' | 'all'> {
+    const answer = await this.prompt(
+      'Which component(s) do you want to bootstrap? (frontend/backend/infra/all) [all]: '
+    );
+    const normalized = answer.trim().toLowerCase();
+
+    if (normalized === 'frontend' || normalized === 'backend' || normalized === 'infra' || normalized === 'all') {
+      return normalized;
+    }
+
+    return 'all'; // Default
+  }
+
+  /**
+   * Prompts user for directory path and validates it exists.
+   *
+   * @param componentType - Type of component (frontend/backend/infra)
+   * @returns Absolute path to directory, or null if skipped
+   */
+  private async promptForPath(componentType: string): Promise<string | null> {
+    const projectRoot = this.projectRoot || process.cwd();
+    let defaultPath = './backend';
+    if (componentType === 'frontend') defaultPath = './frontend';
+    if (componentType === 'infra') defaultPath = './infra';
+
+    const answer = await this.prompt(
+      `Path to ${componentType} directory [${defaultPath}, or 'skip' to skip]: `
+    );
+    const normalized = answer.trim().toLowerCase();
+
+    if (normalized === 'skip' || normalized === 's' || normalized === '') {
+      this.logger.info(`Skipping ${componentType} setup`);
+      return null;
+    }
+
+    // Support both relative and absolute paths
+    const userPath = answer.trim() || defaultPath;
+    const absolutePath = path.isAbsolute(userPath)
+      ? userPath
+      : path.join(projectRoot, userPath);
+
+    // Check if directory exists
+    if (!fs.existsSync(absolutePath)) {
+      this.logger.warn(`Directory not found: ${absolutePath}`);
+      const createIt = await this.confirm(`Create directory ${absolutePath}? (y/N): `);
+
+      if (createIt) {
+        await mkdir(absolutePath, { recursive: true });
+        this.logger.success(`Created directory: ${absolutePath}`);
+        return absolutePath;
+      } else {
+        this.logger.info(`Skipping ${componentType} setup`);
+        return null;
+      }
+    }
+
+    return absolutePath;
+  }
+
+  /**
+   * Saves component paths to .rig/config.json.
+   *
+   * @param frontendPath - Path to frontend directory
+   * @param backendPath - Path to backend directory
+   * @param infraPath - Path to infra directory
+   */
+  private async saveComponentPaths(
+    frontendPath: string | null,
+    backendPath: string | null,
+    infraPath: string | null
+  ): Promise<void> {
+    try {
+      const config = this.config.get();
+
+      if (!config.components) {
+        config.components = {};
+      }
+
+      if (frontendPath) {
+        config.components.frontend = {
+          path: frontendPath,
+          test_command: 'npm test',
+        };
+      }
+
+      if (backendPath) {
+        config.components.backend = {
+          path: backendPath,
+          test_command: 'go test ./...',
+        };
+      }
+
+      if (infraPath) {
+        config.components.infra = {
+          path: infraPath,
+          test_command: 'terraform validate && terraform plan',
+        };
+      }
+
+      // Save updated config
+      const configPath = path.join(
+        this.projectRoot || process.cwd(),
+        '.rig',
+        'config.json'
+      );
+      const configDir = path.dirname(configPath);
+
+      await mkdir(configDir, { recursive: true });
+      await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+
+      this.logger.dim('Saved component paths to .rig/config.json');
+    } catch (error) {
+      this.logger.warn('Failed to save component paths to config');
+    }
+  }
+
+  /**
+   * Prompts the user for input.
+   *
+   * @param question - The question to ask
+   * @returns The user's answer
+   */
+  private prompt(question: string): Promise<string> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+      // Handle Ctrl+C
+      const sigintHandler = () => {
+        rl.close();
+        console.log(''); // Newline after ^C
+        resolve('skip');
+      };
+      process.once('SIGINT', sigintHandler);
+
+      rl.question(question, (answer) => {
+        process.removeListener('SIGINT', sigintHandler);
+        rl.close();
+        resolve(answer);
+      });
+    });
+  }
+
+  /**
+   * Prompts the user for confirmation.
+   *
+   * @param question - The question to ask
+   * @returns True if user confirmed (y/yes), false otherwise
+   */
+  private confirm(question: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+      // Handle Ctrl+C
+      const sigintHandler = () => {
+        rl.close();
+        console.log(''); // Newline after ^C
+        resolve(false);
+      };
+      process.once('SIGINT', sigintHandler);
+
+      rl.question(question, (answer) => {
+        process.removeListener('SIGINT', sigintHandler);
+        rl.close();
+        const normalized = answer.trim().toLowerCase();
+        resolve(normalized === 'y' || normalized === 'yes');
+      });
+    });
   }
 }

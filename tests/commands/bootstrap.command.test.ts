@@ -86,6 +86,26 @@ describe('BootstrapCommand', () => {
       mockGuard,
       testProjectRoot
     );
+
+    // Mock prompt methods to return paths that will be created
+    (command as any).prompt = vi.fn().mockImplementation((question: any) => {
+      const q = String(question);
+      if (q.includes('component')) {
+        return Promise.resolve('all');
+      }
+      if (q.includes('frontend')) {
+        return Promise.resolve(path.join(testProjectRoot, 'frontend'));
+      }
+      if (q.includes('backend')) {
+        return Promise.resolve(path.join(testProjectRoot, 'backend'));
+      }
+      if (q.includes('infra')) {
+        return Promise.resolve(path.join(testProjectRoot, 'infra'));
+      }
+      return Promise.resolve('');
+    });
+
+    (command as any).confirm = vi.fn().mockResolvedValue(false);
   });
 
   afterEach(async () => {
@@ -122,7 +142,7 @@ describe('BootstrapCommand', () => {
 
       await command.execute({ component: 'frontend' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 1, 'Setting up frontend test infrastructure...');
     });
 
     it('bootstraps backend when component is backend', async () => {
@@ -131,14 +151,16 @@ describe('BootstrapCommand', () => {
 
       await command.execute({ component: 'backend' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 1, 'Setting up backend test infrastructure...');
     });
 
-    it('bootstraps both frontend and backend when component is fullstack', async () => {
+    it('bootstraps both frontend and backend when component is all', async () => {
       const frontendPath = path.join(testProjectRoot, 'frontend');
       const backendPath = path.join(testProjectRoot, 'backend');
+      const infraPath = path.join(testProjectRoot, 'infra');
       await mkdir(frontendPath, { recursive: true });
       await mkdir(backendPath, { recursive: true });
+      await mkdir(infraPath, { recursive: true });
 
       // Create package.json
       await writeFile(
@@ -146,17 +168,20 @@ describe('BootstrapCommand', () => {
         JSON.stringify({ name: 'test-frontend', scripts: {} }, null, 2)
       );
 
-      await command.execute({ component: 'fullstack' });
+      await command.execute({ component: 'all' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 3, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(2, 3, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(3, 3, 'Setting up infra test infrastructure...');
     });
 
-    it('defaults to fullstack when no component specified', async () => {
+    it('defaults to all when no component specified', async () => {
       const frontendPath = path.join(testProjectRoot, 'frontend');
       const backendPath = path.join(testProjectRoot, 'backend');
+      const infraPath = path.join(testProjectRoot, 'infra');
       await mkdir(frontendPath, { recursive: true });
       await mkdir(backendPath, { recursive: true });
+      await mkdir(infraPath, { recursive: true });
 
       // Create package.json
       await writeFile(
@@ -166,8 +191,9 @@ describe('BootstrapCommand', () => {
 
       await command.execute();
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 3, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(2, 3, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(3, 3, 'Setting up infra test infrastructure...');
     });
   });
 
@@ -323,13 +349,13 @@ describe('BootstrapCommand', () => {
       expect(packageJson.scripts['test:coverage']).toBe('vitest run --coverage'); // Added
     });
 
-    it('skips frontend setup if directory does not exist', async () => {
-      // Remove frontend directory
-      await rm(path.join(testProjectRoot, 'frontend'), { recursive: true, force: true });
+    it('skips frontend setup if user enters skip', async () => {
+      // Mock prompt to return 'skip'
+      vi.spyOn(command as any, 'prompt').mockResolvedValue('skip');
 
       await command.execute({ component: 'frontend' });
 
-      expect(mockLogger.warn).toHaveBeenCalledWith('Frontend directory not found, skipping frontend setup');
+      expect(mockLogger.info).toHaveBeenCalledWith('Skipping frontend setup');
     });
 
     it('handles npm install failure gracefully', async () => {
@@ -360,13 +386,36 @@ describe('BootstrapCommand', () => {
       expect(mockLogger.dim).toHaveBeenCalledWith('Ensure tests follow *_test.go naming convention');
     });
 
-    it('skips backend setup if directory does not exist', async () => {
-      // Remove backend directory
-      await rm(path.join(testProjectRoot, 'backend'), { recursive: true, force: true });
+    it('skips backend setup if user enters skip', async () => {
+      // Mock prompt to return 'skip'
+      (command as any).prompt = vi.fn().mockResolvedValue('skip');
 
       await command.execute({ component: 'backend' });
 
-      expect(mockLogger.warn).toHaveBeenCalledWith('Backend directory not found, skipping backend setup');
+      expect(mockLogger.info).toHaveBeenCalledWith('Skipping backend setup');
+    });
+  });
+
+  describe('infra setup', () => {
+    beforeEach(async () => {
+      const infraPath = path.join(testProjectRoot, 'infra');
+      await mkdir(infraPath, { recursive: true });
+    });
+
+    it('handles infra setup (no-op for IaC projects)', async () => {
+      await command.execute({ component: 'infra' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Infra testing typically uses IaC-specific tools');
+      expect(mockLogger.dim).toHaveBeenCalledWith('Example: terraform validate && terraform plan');
+    });
+
+    it('skips infra setup if user enters skip', async () => {
+      // Mock prompt to return 'skip'
+      (command as any).prompt = vi.fn().mockResolvedValue('skip');
+
+      await command.execute({ component: 'infra' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Skipping infra setup');
     });
   });
 });
