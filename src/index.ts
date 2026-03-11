@@ -20,6 +20,9 @@ import { ImplementCommand } from './commands/implement.command.js';
 import { TestCommand } from './commands/test.command.js';
 import { DemoCommand } from './commands/demo.command.js';
 import { PrCommand } from './commands/pr.command.js';
+import { ReviewCommand } from './commands/review.command.js';
+import { ShipCommand } from './commands/ship.command.js';
+import { BootstrapCommand } from './commands/bootstrap.command.js';
 
 const program = new Command();
 
@@ -116,6 +119,40 @@ program
   .action(async () => {
     const prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
     await prCommand.execute();
+  });
+
+// Register ship command
+program
+  .command('ship')
+  .description('Run full issue-to-PR pipeline (pick → implement → test → demo → pr → review)')
+  .option('--issue <number>', 'Start with a specific issue number')
+  .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
+  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
+  .action(async (options) => {
+    const shipCommand = new ShipCommand(logger, config, state, git, github, guard, projectRoot);
+    await shipCommand.execute(options);
+  });
+
+// Register review command
+program
+  .command('review')
+  .description('Run code review using Claude Code agent')
+  .option('--issue <number>', 'Review a specific issue number')
+  .option('--pr <number>', 'Review a specific PR number')
+  .option('--dry-run', 'Show what would be done without executing')
+  .action(async (options) => {
+    const reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
+    await reviewCommand.execute(options);
+  });
+
+// Register bootstrap command
+program
+  .command('bootstrap')
+  .description('Set up test infrastructure (vitest, testing-library, msw)')
+  .option('--component <name>', 'Component to bootstrap (frontend, backend, fullstack)')
+  .action(async (options) => {
+    const bootstrapCommand = new BootstrapCommand(logger, config, state, git, github, guard, projectRoot);
+    await bootstrapCommand.execute(options);
   });
 
 program.parse();
