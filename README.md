@@ -4,7 +4,7 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-**rig-cli** is an intelligent CLI tool that orchestrates your entire development workflow—from GitHub issue selection to pull request creation and code review—powered by Claude AI.
+rig-cli is an intelligent CLI tool that orchestrates your entire development workflow—from GitHub issue selection to pull request creation and code review—powered by Claude AI.
 
 ## Overview
 
@@ -13,55 +13,61 @@ rig-cli automates the full software development lifecycle by managing a structur
 ## Features
 
 ### Full Pipeline Automation
-- **Issue-to-PR Pipeline**: Automated workflow from issue selection to pull request creation
-- **Resume Capability**: Pick up where you left off if the pipeline is interrupted
-- **State Management**: Tracks pipeline progress across all stages
-- **Multi-stage Workflow**: Pick → Branch → Implement → Test → Demo → PR → Review
+
+- Issue-to-PR Pipeline: Automated workflow from issue selection to pull request creation
+- Resume Capability: Pick up where you left off if the pipeline is interrupted
+- State Management: Tracks pipeline progress across all stages
+- Multi-stage Workflow: Pick → Branch → Implement → Test → Demo → PR → Review
 
 ### AI-Powered Development
-- **Claude AI Integration**: Uses Claude Code agent for implementation and fixes
-- **Intelligent Code Review**: Automated code review with interactive triage
-- **Auto-fix on Test Failures**: Automatically attempts to fix failing tests (up to 3 retries)
-- **Context-Aware Prompts**: Generates rich prompts with issue context, codebase info, and test results
+
+- Claude AI Integration: Uses Claude Code agent for implementation and fixes
+- Intelligent Code Review: Automated code review with interactive triage
+- Auto-fix on Test Failures: Automatically attempts to fix failing tests (up to 3 retries)
+- Context-Aware Prompts: Generates rich prompts with issue context, codebase info, and test results
 
 ### Smart Issue Management
-- **Priority Queue System**: Automatically prioritizes issues based on phase and label priorities
-- **Component Filtering**: Filter by component (backend, frontend, fullstack, devnet)
-- **Phase Filtering**: Focus on specific project phases (e.g., "Phase 1: MVP")
-- **Open PR Detection**: Skips issues that already have open pull requests
+
+- Priority Queue System: Automatically prioritizes issues based on phase and label priorities
+- Component Filtering: Filter by component (backend, frontend, fullstack, devnet)
+- Phase Filtering: Focus on specific project phases (e.g., "Phase 1: MVP")
+- Open PR Detection: Skips issues that already have open pull requests
 
 ### Test Automation
-- **Multi-Environment Testing**: Supports both frontend (Vitest) and backend (Go) test suites
-- **Test Bootstrapping**: Automatically sets up test infrastructure for new projects
-- **Test Retry Logic**: Runs fix agent and retries on test failures
-- **Coverage Reporting**: Displays test coverage information
+
+- Multi-Environment Testing: Supports both frontend (Vitest) and backend (Go) test suites
+- Test Bootstrapping: Automatically sets up test infrastructure for new projects
+- Test Retry Logic: Runs fix agent and retries on test failures
+- Coverage Reporting: Displays test coverage information
 
 ### Demo Recording
-- **Automated Demos**: Records demonstrations of implemented features
-- **Logger Integration**: Captures structured logs during demo runs
-- **Component-Specific**: Tailored demo scripts for frontend, backend, and fullstack
+
+- Automated Demos: Records demonstrations of implemented features
+- Logger Integration: Captures structured logs during demo runs
+- Component-Specific: Tailored demo scripts for frontend, backend, and fullstack
 
 ### Code Review
-- **Automated Reviews**: AI-powered code review with severity-based findings
-- **Interactive Triage**: Select which findings to address
-- **Auto-fix Findings**: Automatically fix selected review findings
-- **PR-Based Reviews**: Review pull requests directly with `--pr` option
+
+- Automated Reviews: AI-powered code review with severity-based findings
+- Interactive Triage: Select which findings to address
+- Auto-fix Findings: Automatically fix selected review findings
+- PR-Based Reviews: Review pull requests directly with `--pr` option
 
 ## Installation
 
 ### Prerequisites
 
-- **Node.js**: v18 or higher
-- **GitHub CLI (gh)**: Installed and authenticated
+- Node.js: v18 or higher
+- GitHub CLI (gh): Installed and authenticated
   ```bash
   brew install gh
   gh auth login
   ```
-- **Claude CLI**: For AI-powered agents
+- Claude CLI: For AI-powered agents
   ```bash
   npm install -g @anthropics/claude-cli
   ```
-- **Git**: For version control operations
+- Git: For version control operations
 
 ### Install rig-cli
 
@@ -72,7 +78,7 @@ npm install -g rig-cli
 Or install locally for development:
 
 ```bash
-git clone https://github.com/yourusername/rig-cli.git
+git clone https://github.com/zachstecko/rig-cli.git
 cd rig-cli
 npm install
 npm link
@@ -89,6 +95,7 @@ rig bootstrap
 ```
 
 This sets up:
+
 - Frontend testing (Vitest, Testing Library, MSW)
 - Test configuration files
 - Mock handlers and test utilities
@@ -100,6 +107,7 @@ rig next
 ```
 
 This will:
+
 - Fetch open issues from GitHub
 - Prioritize based on labels and phases
 - Create a feature branch
@@ -112,19 +120,21 @@ rig ship
 ```
 
 This orchestrates the complete workflow:
-1. **Pick**: Select next issue from queue
-2. **Branch**: Create feature branch
-3. **Implement**: Run implementation agent
-4. **Test**: Run tests (with auto-retry on failures)
-5. **Demo**: Record demonstration
-6. **PR**: Create pull request
-7. **Review**: Run code review agent
+
+1. Pick: Select next issue from queue
+2. Branch: Create feature branch
+3. Implement: Run implementation agent
+4. Test: Run tests (with auto-retry on failures)
+5. Demo: Record demonstration
+6. PR: Create pull request
+7. Review: Run code review agent
 
 ## Commands
 
 ### Core Pipeline Commands
 
 #### `rig ship`
+
 Runs the full issue-to-PR pipeline from start to finish.
 
 ```bash
@@ -134,12 +144,14 @@ rig ship --phase "Phase 1: MVP"    # Filter by phase
 rig ship --component backend       # Filter by component
 ```
 
-**Features**:
+Features:
+
 - Automatic resume from last stage if interrupted
 - Test retry with fix agent (up to 3 attempts)
 - Stale state detection (aborts if issue is closed)
 
 #### `rig next`
+
 Picks the next issue from the priority queue.
 
 ```bash
@@ -148,12 +160,14 @@ rig next --phase "Phase 2"         # Filter by phase
 rig next --component frontend      # Filter by component
 ```
 
-**Priority Calculation**:
+Priority Calculation:
+
 - Phase priority × 1000
 - Label priority (P0=5, P1=4, P2=3, P3=2, P4=1)
 - Issue number (older issues prioritized)
 
 #### `rig implement`
+
 Runs the implementation agent for the current issue.
 
 ```bash
@@ -163,6 +177,7 @@ rig implement --dry-run            # Preview prompt without executing
 ```
 
 #### `rig test`
+
 Runs the test suite for your project.
 
 ```bash
@@ -170,12 +185,14 @@ rig test                           # Run tests for current pipeline
 rig test --component backend       # Run backend tests only
 ```
 
-**Supported Test Runners**:
-- **Frontend**: `npm test` (Vitest)
-- **Backend**: `go test ./...`
-- **Fullstack**: Both frontend and backend tests
+Supported Test Runners:
+
+- Frontend: `npm test` (Vitest)
+- Backend: `go test ./...`
+- Fullstack: Both frontend and backend tests
 
 #### `rig demo`
+
 Records a demonstration of the implemented feature.
 
 ```bash
@@ -185,19 +202,22 @@ rig demo --component frontend      # Demo frontend only
 ```
 
 #### `rig pr`
+
 Creates a pull request for the current branch.
 
 ```bash
 rig pr                             # Create PR from current state
 ```
 
-**Features**:
+Features:
+
 - Auto-generates title and description
 - Links to original issue
 - Includes implementation summary
 - Adds test plan checklist
 
 #### `rig review`
+
 Runs code review on the current changes.
 
 ```bash
@@ -207,7 +227,8 @@ rig review --pr 100                # Review specific PR
 rig review --dry-run               # Preview review prompt
 ```
 
-**Review Process**:
+Review Process:
+
 1. Runs AI code review agent (read-only)
 2. Parses findings by severity (high/medium/low)
 3. Interactive triage to select findings
@@ -216,6 +237,7 @@ rig review --dry-run               # Preview review prompt
 ### Utility Commands
 
 #### `rig queue`
+
 Displays the current issue queue with priorities.
 
 ```bash
@@ -226,13 +248,15 @@ rig queue --limit 20               # Limit results
 ```
 
 #### `rig status`
+
 Shows the current pipeline state.
 
 ```bash
 rig status
 ```
 
-**Output**:
+Output:
+
 - Current issue number and title
 - Current stage
 - Status of all stages (completed/pending/failed)
@@ -240,18 +264,21 @@ rig status
 - Next steps
 
 #### `rig reset`
+
 Clears the current pipeline state with interactive confirmation.
 
 ```bash
 rig reset
 ```
 
-**Warning**: This abandons the current issue. Use when:
+Warning: This abandons the current issue. Use when:
+
 - Switching to a different issue
 - Pipeline is stuck or corrupted
 - Issue has been closed/merged externally
 
 #### `rig bootstrap`
+
 Sets up test infrastructure for your project.
 
 ```bash
@@ -260,13 +287,15 @@ rig bootstrap --component frontend # Bootstrap frontend only
 rig bootstrap --component backend  # Bootstrap backend only
 ```
 
-**Frontend Setup**:
+Frontend Setup:
+
 - Installs Vitest, Testing Library, MSW
 - Creates `vitest.config.ts`
 - Sets up test utilities in `src/test/`
 - Adds npm scripts
 
-**Backend Setup**:
+Backend Setup:
+
 - Currently a no-op (Go projects work out of the box)
 
 ## Configuration
@@ -313,27 +342,31 @@ Create a configuration file in your project root:
 ### Component Detection
 
 rig-cli automatically detects project components based on issue labels:
-- **frontend**: Issues labeled with `frontend`
-- **backend**: Issues labeled with `backend`
-- **fullstack**: Issues labeled with `fullstack`
-- **devnet**: Issues labeled with `devnet`
+
+- frontend: Issues labeled with `frontend`
+- backend: Issues labeled with `backend`
+- fullstack: Issues labeled with `fullstack`
+- devnet: Issues labeled with `devnet`
 
 ### Allowed Tools by Component
 
 Different components have access to different Claude Code tools:
 
-**Frontend**:
+Frontend:
+
 - Read, Edit, Write
 - Bash (with npm/npx restrictions)
 - Glob, Grep
 - NotebookEdit
 
-**Backend**:
+Backend:
+
 - Read, Edit, Write
 - Bash (with go restrictions)
 - Glob, Grep
 
-**Fullstack**:
+Fullstack:
+
 - All frontend + backend tools
 
 ## Pipeline Workflow
@@ -346,42 +379,42 @@ pick → branch → implement → test → demo → pr → review
 
 ### Stage Details
 
-1. **Pick** (`rig next`)
+1. Pick (`rig next`)
    - Fetches open issues from GitHub
    - Calculates priority scores
    - Filters by phase/component
    - Skips issues with open PRs
    - Creates initial state
 
-2. **Branch** (automatic)
+2. Branch (automatic)
    - Creates feature branch: `issue-{number}-{slugified-title}`
    - Checks out new branch
    - Updates state
 
-3. **Implement** (`rig implement`)
+3. Implement (`rig implement`)
    - Assembles rich prompt with issue context
    - Runs Claude Code agent
    - Agent reads code, makes changes, runs tests
    - Logs to `.rig-logs/implement-issue-{number}.log`
 
-4. **Test** (`rig test`)
+4. Test (`rig test`)
    - Runs appropriate test suite (frontend/backend/both)
    - On failure: runs fix agent (up to 3 retries)
    - Displays test results and coverage
    - Fails pipeline after max retries
 
-5. **Demo** (`rig demo`)
+5. Demo (`rig demo`)
    - Runs demo script to exercise feature
    - Captures logs and output
    - Logs to `.rig-logs/demo-issue-{number}.log`
 
-6. **PR** (`rig pr`)
+6. PR (`rig pr`)
    - Generates PR title and description
    - Creates pull request via GitHub CLI
    - Includes issue link and implementation summary
    - Updates state with PR number
 
-7. **Review** (`rig review`)
+7. Review (`rig review`)
    - Runs AI code review (read-only)
    - Parses findings from review file
    - Interactive triage of findings
@@ -630,11 +663,13 @@ rig ship    # Start fresh
 ### Test Failures Not Auto-Fixing
 
 Check agent logs:
+
 ```bash
 cat .rig-logs/fix-attempt-1.log
 ```
 
 Common issues:
+
 - Test configuration errors
 - Missing dependencies
 - Environment-specific test failures
@@ -664,6 +699,7 @@ rig next                                    # Start fresh
 ## Best Practices
 
 ### Issue Management
+
 - Use clear, descriptive issue titles
 - Add component labels (frontend/backend/fullstack)
 - Add priority labels (P0-P4)
@@ -671,18 +707,21 @@ rig next                                    # Start fresh
 - Keep issue descriptions detailed with acceptance criteria
 
 ### Testing
+
 - Run `rig bootstrap` when starting a new project
 - Ensure tests pass locally before using `rig ship`
 - Review fix agent logs when auto-fixes fail
 - Monitor test output during pipeline execution
 
 ### Code Review
+
 - Review the findings before auto-fixing
 - Use "q" to quit triage if you want to fix manually
 - Check `.rig-reviews/` for full review reports
 - Re-run `rig review` after making changes
 
 ### State Management
+
 - Use `rig status` frequently to check progress
 - Use `rig reset` when switching issues
 - Don't manually edit `.rig/state.json`
@@ -706,8 +745,8 @@ MIT License - see LICENSE file for details
 
 ## Support
 
-- GitHub Issues: [Report bugs or request features](https://github.com/yourusername/rig-cli/issues)
-- Documentation: [Full documentation](https://github.com/yourusername/rig-cli/wiki)
+- GitHub Issues: [Report bugs or request features](https://github.com/zachstecko/rig-cli/issues)
+- Documentation: [Full documentation](https://github.com/zachstecko/rig-cli/wiki)
 
 ---
 
