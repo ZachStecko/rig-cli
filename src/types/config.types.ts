@@ -59,6 +59,7 @@ export interface ComponentsConfig {
   frontend?: ComponentConfig;
   backend?: ComponentConfig;
   infra?: ComponentConfig;
+  serverless?: ComponentConfig;
 }
 
 /**

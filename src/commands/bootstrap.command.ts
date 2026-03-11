@@ -20,8 +20,8 @@ const execAsync = promisify(exec);
  * Options for the bootstrap command.
  */
 export interface BootstrapOptions {
-  /** Target component to bootstrap (frontend, backend, infra, all) */
-  component?: 'frontend' | 'backend' | 'infra' | 'all';
+  /** Target component to bootstrap (frontend, backend, infra, serverless, all) */
+  component?: 'frontend' | 'backend' | 'infra' | 'serverless' | 'all';
 }
 
 /**
@@ -64,12 +64,14 @@ export class BootstrapCommand extends BaseCommand {
     let frontendPath: string | null = null;
     let backendPath: string | null = null;
     let infraPath: string | null = null;
+    let serverlessPath: string | null = null;
 
     // Calculate total steps dynamically
     const totalSteps =
       (component === 'frontend' || component === 'all' ? 1 : 0) +
       (component === 'backend' || component === 'all' ? 1 : 0) +
-      (component === 'infra' || component === 'all' ? 1 : 0);
+      (component === 'infra' || component === 'all' ? 1 : 0) +
+      (component === 'serverless' || component === 'all' ? 1 : 0);
 
     let currentStep = 0;
 
@@ -94,9 +96,16 @@ export class BootstrapCommand extends BaseCommand {
       }
     }
 
+    if (component === 'serverless' || component === 'all') {
+      serverlessPath = await this.promptForPath('serverless');
+      if (serverlessPath) {
+        await this.bootstrapServerless(serverlessPath, ++currentStep, totalSteps);
+      }
+    }
+
     // Save paths to config if provided
-    if (frontendPath || backendPath || infraPath) {
-      await this.saveComponentPaths(frontendPath, backendPath, infraPath);
+    if (frontendPath || backendPath || infraPath || serverlessPath) {
+      await this.saveComponentPaths(frontendPath, backendPath, infraPath, serverlessPath);
     }
 
     console.log('');
@@ -183,20 +192,278 @@ export class BootstrapCommand extends BaseCommand {
   /**
    * Bootstraps backend test infrastructure.
    *
-   * @param _backendPath - Path to backend directory (unused, no setup needed for Go)
+   * @param backendPath - Path to backend directory
    * @param step - Current step number
    * @param totalSteps - Total number of steps
    */
-  private async bootstrapBackend(_backendPath: string, step: number, totalSteps: number): Promise<void> {
+  private async bootstrapBackend(backendPath: string, step: number, totalSteps: number): Promise<void> {
     this.logger.step(step, totalSteps, 'Setting up backend test infrastructure...');
     console.log('');
 
-    // Backend typically uses Go with built-in testing
-    // Just verify the structure is correct
-    this.logger.info('Backend uses Go testing (built-in), no additional setup needed');
-    this.logger.dim('Ensure tests follow *_test.go naming convention');
+    // Prompt user to choose backend type
+    const backendType = await this.prompt('Is this a Go or TypeScript backend? (go/typescript) [go]: ');
+    const normalized = (backendType?.trim().toLowerCase()) || 'go';
+
+    if (normalized === 'typescript' || normalized === 'ts') {
+      await this.bootstrapBackendTypeScript(backendPath);
+    } else {
+      // Default to Go (includes empty input)
+      this.logger.info('Backend uses Go testing (built-in), no additional setup needed');
+      this.logger.dim('Ensure tests follow *_test.go naming convention');
+    }
 
     console.log('');
+  }
+
+  /**
+   * Bootstraps TypeScript backend test infrastructure with testcontainers.
+   *
+   * @param backendPath - Path to backend directory
+   */
+  private async bootstrapBackendTypeScript(backendPath: string): Promise<void> {
+    // Install backend testing dependencies
+    this.logger.info('Installing backend test dependencies...');
+    this.logger.dim('Note: Tests will require Docker to be running for testcontainers');
+    try {
+      await execAsync(
+        'npm install --save-dev vitest @vitest/ui testcontainers @testcontainers/postgresql pg @types/pg',
+        { cwd: backendPath }
+      );
+      this.logger.success('Backend test dependencies installed');
+    } catch (error) {
+      this.logger.warn('Failed to install dependencies (may already be installed)');
+    }
+
+    console.log('');
+
+    // Create vitest.config.ts
+    const vitestConfigPath = path.join(backendPath, 'vitest.config.ts');
+    if (!fs.existsSync(vitestConfigPath)) {
+      this.logger.info('Creating vitest.config.ts...');
+      const vitestConfig = `import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    setupFiles: ['./src/test/setup.ts'],
+    // Extended timeouts for testcontainers
+    // Docker containers need time to download images and start
+    // Reduce these if you experience hanging tests
+    testTimeout: 60000, // 60 seconds
+    hookTimeout: 60000, // 60 seconds
+  },
+});
+`;
+      await fs.promises.writeFile(vitestConfigPath, vitestConfig);
+      this.logger.success('Created vitest.config.ts');
+    } else {
+      this.logger.dim('vitest.config.ts already exists, skipping');
+    }
+
+    console.log('');
+
+    // Create test setup directory
+    const testDir = path.join(backendPath, 'src', 'test');
+    await fs.promises.mkdir(testDir, { recursive: true });
+
+    // Create test setup file
+    const setupPath = path.join(testDir, 'setup.ts');
+    if (!fs.existsSync(setupPath)) {
+      this.logger.info('Creating src/test/setup.ts...');
+      const setupContent = `import { beforeAll, afterAll } from 'vitest';
+
+// Global test setup
+beforeAll(async () => {
+  // Add any global setup here
+});
+
+afterAll(async () => {
+  // Add any global cleanup here
+});
+`;
+      await fs.promises.writeFile(setupPath, setupContent);
+      this.logger.success('Created src/test/setup.ts');
+    } else {
+      this.logger.dim('src/test/setup.ts already exists, skipping');
+    }
+
+    console.log('');
+
+    // Create test helpers directory
+    const helpersDir = path.join(testDir, 'helpers');
+    await fs.promises.mkdir(helpersDir, { recursive: true });
+
+    // Create PostgreSQL testcontainer helper
+    const dbHelperPath = path.join(helpersDir, 'db.helper.ts');
+    if (!fs.existsSync(dbHelperPath)) {
+      this.logger.info('Creating src/test/helpers/db.helper.ts...');
+      const dbHelperContent = `import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { Pool } from 'pg';
+
+/**
+ * Test database helper using testcontainers.
+ * Provides isolated PostgreSQL instance for each test suite.
+ *
+ * Requires Docker to be running.
+ */
+export class TestDatabase {
+  private container?: StartedPostgreSqlContainer;
+  private pool?: Pool;
+
+  /**
+   * Start PostgreSQL testcontainer and create connection pool
+   * @param image - Docker image to use (default: postgres:16-alpine)
+   */
+  async start(image = 'postgres:16-alpine'): Promise<void> {
+    if (this.container) {
+      throw new Error('Container already started');
+    }
+
+    try {
+      this.container = await new PostgreSqlContainer(image)
+        .withDatabase('test_db')
+        .withUsername('test_user')
+        .withPassword('test_password')
+        .start();
+
+      this.pool = new Pool({
+        host: this.container.getHost(),
+        port: this.container.getPort(),
+        database: this.container.getDatabase(),
+        user: this.container.getUsername(),
+        password: this.container.getPassword(),
+      });
+    } catch (error) {
+      throw new Error(
+        \`Failed to start PostgreSQL container. Is Docker running? Error: \${error instanceof Error ? error.message : String(error)}\`
+      );
+    }
+  }
+
+  /**
+   * Stop PostgreSQL testcontainer and close connections
+   */
+  async stop(): Promise<void> {
+    if (this.pool) {
+      await this.pool.end();
+      this.pool = undefined;
+    }
+    if (this.container) {
+      await this.container.stop();
+      this.container = undefined;
+    }
+  }
+
+  /**
+   * Get the database connection pool
+   * @throws Error if container is not started
+   */
+  getPool(): Pool {
+    if (!this.pool) {
+      throw new Error('Database not started. Call start() first.');
+    }
+    return this.pool;
+  }
+}
+`;
+      await fs.promises.writeFile(dbHelperPath, dbHelperContent);
+      this.logger.success('Created src/test/helpers/db.helper.ts');
+    } else {
+      this.logger.dim('src/test/helpers/db.helper.ts already exists, skipping');
+    }
+
+    console.log('');
+
+    // Create example test file
+    const exampleTestPath = path.join(testDir, 'example.test.ts');
+    if (!fs.existsSync(exampleTestPath)) {
+      this.logger.info('Creating src/test/example.test.ts...');
+      const exampleTestContent = `import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
+import { TestDatabase } from './helpers/db.helper';
+
+describe('Database Tests', () => {
+  const db = new TestDatabase();
+
+  beforeAll(async () => {
+    // Start PostgreSQL container (requires Docker to be running)
+    await db.start();
+  });
+
+  afterAll(async () => {
+    // Stop container and cleanup
+    await db.stop();
+  });
+
+  afterEach(async () => {
+    // Clean up test data after each test
+    const pool = db.getPool();
+    await pool.query('DROP TABLE IF EXISTS users');
+  });
+
+  it('should connect to PostgreSQL', async () => {
+    const pool = db.getPool();
+    const result = await pool.query('SELECT 1 as value');
+    expect(result.rows[0].value).toBe(1);
+  });
+
+  it('should create and query a table', async () => {
+    const pool = db.getPool();
+
+    // Create table
+    await pool.query(\`
+      CREATE TABLE users (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL
+      )
+    \`);
+
+    // Insert test data using parameterized query (prevents SQL injection)
+    await pool.query('INSERT INTO users (name) VALUES ($1)', ['Test User']);
+
+    // Query with parameterized query
+    const result = await pool.query('SELECT * FROM users WHERE name = $1', ['Test User']);
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].name).toBe('Test User');
+  });
+
+  it('should handle multiple inserts and queries', async () => {
+    const pool = db.getPool();
+
+    await pool.query(\`
+      CREATE TABLE users (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL
+      )
+    \`);
+
+    // Insert multiple users
+    await pool.query('INSERT INTO users (name) VALUES ($1), ($2), ($3)',
+      ['Alice', 'Bob', 'Charlie']);
+
+    // Query all users
+    const result = await pool.query('SELECT * FROM users ORDER BY name');
+
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows[0].name).toBe('Alice');
+    expect(result.rows[1].name).toBe('Bob');
+    expect(result.rows[2].name).toBe('Charlie');
+  });
+});
+`;
+      await fs.promises.writeFile(exampleTestPath, exampleTestContent);
+      this.logger.success('Created src/test/example.test.ts');
+    } else {
+      this.logger.dim('src/test/example.test.ts already exists, skipping');
+    }
+
+    console.log('');
+
+    // Update package.json scripts
+    this.logger.info('Updating package.json scripts...');
+    await this.updatePackageJsonScripts(backendPath);
+    this.logger.success('Updated package.json scripts');
   }
 
   /**
@@ -214,6 +481,25 @@ export class BootstrapCommand extends BaseCommand {
     this.logger.info('Infra testing typically uses IaC-specific tools');
     this.logger.dim('Example: terraform validate && terraform plan');
     this.logger.dim('Configure test_command in .rig/config.json for your IaC tool');
+
+    console.log('');
+  }
+
+  /**
+   * Bootstraps serverless test infrastructure.
+   *
+   * @param _serverlessPath - Path to serverless directory (unused, no setup needed)
+   * @param step - Current step number
+   * @param totalSteps - Total number of steps
+   */
+  private async bootstrapServerless(_serverlessPath: string, step: number, totalSteps: number): Promise<void> {
+    this.logger.step(step, totalSteps, 'Setting up serverless test infrastructure...');
+    console.log('');
+
+    // Serverless uses framework-specific testing tools
+    this.logger.info('Serverless uses framework-specific testing (Serverless Framework, SAM, etc.)');
+    this.logger.dim('Example: serverless invoke test or npm test');
+    this.logger.dim('Configure test_command in .rig/config.json for your serverless framework');
 
     console.log('');
   }
@@ -364,13 +650,13 @@ export const handlers = [
    *
    * @returns The selected component type
    */
-  private async promptForComponent(): Promise<'frontend' | 'backend' | 'infra' | 'all'> {
+  private async promptForComponent(): Promise<'frontend' | 'backend' | 'infra' | 'serverless' | 'all'> {
     const answer = await this.prompt(
-      'Which component(s) do you want to bootstrap? (frontend/backend/infra/all) [all]: '
+      'Which component(s) do you want to bootstrap? (frontend/backend/infra/serverless/all) [all]: '
     );
     const normalized = answer.trim().toLowerCase();
 
-    if (normalized === 'frontend' || normalized === 'backend' || normalized === 'infra' || normalized === 'all') {
+    if (normalized === 'frontend' || normalized === 'backend' || normalized === 'infra' || normalized === 'serverless' || normalized === 'all') {
       return normalized;
     }
 
@@ -380,7 +666,7 @@ export const handlers = [
   /**
    * Prompts user for directory path and validates it exists.
    *
-   * @param componentType - Type of component (frontend/backend/infra)
+   * @param componentType - Type of component (frontend/backend/infra/serverless)
    * @returns Absolute path to directory, or null if skipped
    */
   private async promptForPath(componentType: string): Promise<string | null> {
@@ -388,6 +674,7 @@ export const handlers = [
     let defaultPath = './backend';
     if (componentType === 'frontend') defaultPath = './frontend';
     if (componentType === 'infra') defaultPath = './infra';
+    if (componentType === 'serverless') defaultPath = './serverless';
 
     const answer = await this.prompt(
       `Path to ${componentType} directory [${defaultPath}, or 'skip' to skip]: `
@@ -429,11 +716,13 @@ export const handlers = [
    * @param frontendPath - Path to frontend directory
    * @param backendPath - Path to backend directory
    * @param infraPath - Path to infra directory
+   * @param serverlessPath - Path to serverless directory
    */
   private async saveComponentPaths(
     frontendPath: string | null,
     backendPath: string | null,
-    infraPath: string | null
+    infraPath: string | null,
+    serverlessPath: string | null
   ): Promise<void> {
     try {
       const config = this.config.get();
@@ -460,6 +749,13 @@ export const handlers = [
         config.components.infra = {
           path: infraPath,
           test_command: 'terraform validate && terraform plan',
+        };
+      }
+
+      if (serverlessPath) {
+        config.components.serverless = {
+          path: serverlessPath,
+          test_command: 'npm test',
         };
       }
 

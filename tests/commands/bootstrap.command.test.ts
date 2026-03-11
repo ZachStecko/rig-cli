@@ -102,6 +102,9 @@ describe('BootstrapCommand', () => {
       if (q.includes('infra')) {
         return Promise.resolve(path.join(testProjectRoot, 'infra'));
       }
+      if (q.includes('serverless')) {
+        return Promise.resolve(path.join(testProjectRoot, 'serverless'));
+      }
       return Promise.resolve('');
     });
 
@@ -158,9 +161,11 @@ describe('BootstrapCommand', () => {
       const frontendPath = path.join(testProjectRoot, 'frontend');
       const backendPath = path.join(testProjectRoot, 'backend');
       const infraPath = path.join(testProjectRoot, 'infra');
+      const serverlessPath = path.join(testProjectRoot, 'serverless');
       await mkdir(frontendPath, { recursive: true });
       await mkdir(backendPath, { recursive: true });
       await mkdir(infraPath, { recursive: true });
+      await mkdir(serverlessPath, { recursive: true });
 
       // Create package.json
       await writeFile(
@@ -170,18 +175,21 @@ describe('BootstrapCommand', () => {
 
       await command.execute({ component: 'all' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 3, 'Setting up frontend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 3, 'Setting up backend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(3, 3, 'Setting up infra test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(3, 4, 'Setting up infra test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(4, 4, 'Setting up serverless test infrastructure...');
     });
 
     it('defaults to all when no component specified', async () => {
       const frontendPath = path.join(testProjectRoot, 'frontend');
       const backendPath = path.join(testProjectRoot, 'backend');
       const infraPath = path.join(testProjectRoot, 'infra');
+      const serverlessPath = path.join(testProjectRoot, 'serverless');
       await mkdir(frontendPath, { recursive: true });
       await mkdir(backendPath, { recursive: true });
       await mkdir(infraPath, { recursive: true });
+      await mkdir(serverlessPath, { recursive: true });
 
       // Create package.json
       await writeFile(
@@ -191,9 +199,10 @@ describe('BootstrapCommand', () => {
 
       await command.execute();
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 3, 'Setting up frontend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 3, 'Setting up backend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(3, 3, 'Setting up infra test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(3, 4, 'Setting up infra test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(4, 4, 'Setting up serverless test infrastructure...');
     });
   });
 
@@ -379,11 +388,64 @@ describe('BootstrapCommand', () => {
       await mkdir(backendPath, { recursive: true });
     });
 
-    it('handles backend setup (no-op for Go projects)', async () => {
+    it('handles Go backend setup (no-op)', async () => {
+      // Mock prompt to return 'go'
+      (command as any).prompt = vi.fn().mockImplementation((question: any) => {
+        const q = String(question);
+        if (q.includes('Go or TypeScript')) {
+          return Promise.resolve('go');
+        }
+        if (q.includes('backend')) {
+          return Promise.resolve(path.join(testProjectRoot, 'backend'));
+        }
+        return Promise.resolve('');
+      });
+
       await command.execute({ component: 'backend' });
 
       expect(mockLogger.info).toHaveBeenCalledWith('Backend uses Go testing (built-in), no additional setup needed');
       expect(mockLogger.dim).toHaveBeenCalledWith('Ensure tests follow *_test.go naming convention');
+    });
+
+    it('handles TypeScript backend setup with testcontainers', async () => {
+      const backendPath = path.join(testProjectRoot, 'backend');
+      await mkdir(backendPath, { recursive: true });
+
+      // Create package.json
+      await writeFile(
+        path.join(backendPath, 'package.json'),
+        JSON.stringify({ name: 'test-backend', scripts: {} }, null, 2)
+      );
+
+      // Mock prompt to return 'typescript'
+      (command as any).prompt = vi.fn().mockImplementation((question: any) => {
+        const q = String(question);
+        if (q.includes('Go or TypeScript')) {
+          return Promise.resolve('typescript');
+        }
+        if (q.includes('backend')) {
+          return Promise.resolve(path.join(testProjectRoot, 'backend'));
+        }
+        return Promise.resolve('');
+      });
+
+      await command.execute({ component: 'backend' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Installing backend test dependencies...');
+      expect(mockLogger.success).toHaveBeenCalledWith('Backend test dependencies installed');
+
+      // Check files were created
+      const vitestConfigPath = path.join(backendPath, 'vitest.config.ts');
+      expect(fs.existsSync(vitestConfigPath)).toBe(true);
+
+      const setupPath = path.join(backendPath, 'src', 'test', 'setup.ts');
+      expect(fs.existsSync(setupPath)).toBe(true);
+
+      const dbHelperPath = path.join(backendPath, 'src', 'test', 'helpers', 'db.helper.ts');
+      expect(fs.existsSync(dbHelperPath)).toBe(true);
+
+      const exampleTestPath = path.join(backendPath, 'src', 'test', 'example.test.ts');
+      expect(fs.existsSync(exampleTestPath)).toBe(true);
     });
 
     it('skips backend setup if user enters skip', async () => {
@@ -416,6 +478,29 @@ describe('BootstrapCommand', () => {
       await command.execute({ component: 'infra' });
 
       expect(mockLogger.info).toHaveBeenCalledWith('Skipping infra setup');
+    });
+  });
+
+  describe('serverless setup', () => {
+    beforeEach(async () => {
+      const serverlessPath = path.join(testProjectRoot, 'serverless');
+      await mkdir(serverlessPath, { recursive: true });
+    });
+
+    it('handles serverless setup (no-op for serverless projects)', async () => {
+      await command.execute({ component: 'serverless' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Serverless uses framework-specific testing (Serverless Framework, SAM, etc.)');
+      expect(mockLogger.dim).toHaveBeenCalledWith('Example: serverless invoke test or npm test');
+    });
+
+    it('skips serverless setup if user enters skip', async () => {
+      // Mock prompt to return 'skip'
+      (command as any).prompt = vi.fn().mockResolvedValue('skip');
+
+      await command.execute({ component: 'serverless' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Skipping serverless setup');
     });
   });
 });
