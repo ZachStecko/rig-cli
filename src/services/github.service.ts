@@ -283,6 +283,26 @@ export class GitHubService {
   }
 
   /**
+   * Gets pull request details.
+   *
+   * @param prNumber - PR number
+   * @returns PR object with number, title, body, headRefName (branch)
+   * @throws Error if PR doesn't exist or gh command fails
+   */
+  async viewPr(prNumber: number): Promise<{ number: number; title: string; body?: string; headRefName: string }> {
+    const result = await this.gh(
+      `pr view ${prNumber} --json number,title,body,headRefName`
+    );
+    try {
+      return JSON.parse(result.stdout);
+    } catch (error) {
+      throw new Error(
+        `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Validates a git branch name to prevent command injection.
    * Uses the same validation as GitService for consistency.
    *

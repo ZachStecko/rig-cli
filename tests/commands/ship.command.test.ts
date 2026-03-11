@@ -85,6 +85,7 @@ describe('ShipCommand', () => {
         number: 42,
         title: 'Test Issue',
         labels: [{ name: 'fullstack' }],
+        state: 'OPEN',
       }),
     } as any;
 
@@ -331,6 +332,41 @@ describe('ShipCommand', () => {
       });
 
       vi.mocked(mockGitHub.viewIssue).mockRejectedValue(new Error('Issue not found'));
+
+      await command.execute();
+
+      expect(mockLogger.error).toHaveBeenCalledWith('Issue #42 is no longer OPEN. Pipeline aborted.');
+      expect(mockLogger.info).toHaveBeenCalledWith(`Run 'rig reset' to clear state and start fresh.`);
+      expect(exitSpy).toHaveBeenCalledWith(1);
+
+      // Should not run any pipeline stages
+      expect((command as any).implementCommand.execute).not.toHaveBeenCalled();
+    });
+
+    it('detects stale state when issue is closed', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(true);
+      vi.mocked(mockState.read).mockResolvedValue({
+        issue_number: 42,
+        issue_title: 'Add user dashboard',
+        branch: 'issue-42-add-user-dashboard',
+        stage: 'implement',
+        stages: {
+          pick: 'completed',
+          branch: 'completed',
+          implement: 'pending',
+          test: 'pending',
+          demo: 'pending',
+          pr: 'pending',
+          review: 'pending',
+        },
+      });
+
+      vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
+        number: 42,
+        title: 'Add user dashboard',
+        labels: [{ name: 'fullstack' }],
+        state: 'CLOSED',
+      });
 
       await command.execute();
 

@@ -15,6 +15,7 @@ export interface Issue {
   body?: string;
   labels: IssueLabel[];
   assignees?: { login: string }[];
+  state?: 'OPEN' | 'CLOSED';
 }
 
 /**

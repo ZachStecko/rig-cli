@@ -114,10 +114,51 @@ export class ReviewCommand extends BaseCommand {
         };
       }
     } else if (options?.pr) {
-      // TODO: Implement --pr option (would need to fetch PR details and determine issue)
-      this.logger.error('--pr option not yet implemented. Use --issue instead.');
-      process.exit(1);
-      return; // For testing
+      // Use --pr flag to fetch PR and extract issue number
+      const prNumber = parseInt(options.pr, 10);
+      if (isNaN(prNumber)) {
+        this.logger.error(`Invalid PR number: ${options.pr}`);
+        process.exit(1);
+        return; // For testing
+      }
+
+      // Fetch PR details
+      const pr = await this.github.viewPr(prNumber);
+
+      // Extract issue number from branch name (format: issue-{number}-...)
+      const branchMatch = pr.headRefName.match(/^issue-(\d+)/);
+      if (!branchMatch) {
+        this.logger.error(`Cannot determine issue number from PR #${prNumber} branch: ${pr.headRefName}`);
+        this.logger.info('Branch name must start with "issue-{number}" format.');
+        process.exit(1);
+        return; // For testing
+      }
+
+      issueNumber = parseInt(branchMatch[1], 10);
+
+      // Load or create minimal state for this issue
+      const stateExists = await this.state.exists();
+      if (stateExists) {
+        state = await this.state.read();
+      } else {
+        // Create minimal state for ad-hoc review
+        const issue = await this.github.viewIssue(issueNumber);
+        state = {
+          issue_number: issueNumber,
+          issue_title: issue.title,
+          branch: pr.headRefName,
+          stage: 'review',
+          stages: {
+            pick: 'completed',
+            branch: 'completed',
+            implement: 'completed',
+            test: 'completed',
+            demo: 'completed',
+            pr: 'completed',
+            review: 'pending',
+          },
+        };
+      }
     } else {
       // Use state from active pipeline
       const stateExists = await this.state.exists();

@@ -11,7 +11,11 @@ import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
+import { ClaudeService } from '../services/claude.service.js';
+import { PromptBuilderService } from '../services/prompt-builder.service.js';
+import { TemplateEngine } from '../services/template-engine.service.js';
 import { StageName } from '../types/state.types.js';
+import * as path from 'path';
 
 /**
  * Options for the ship command.
@@ -47,6 +51,8 @@ export class ShipCommand extends BaseCommand {
   private demoCommand: DemoCommand;
   private prCommand: PrCommand;
   private reviewCommand: ReviewCommand;
+  private claude: ClaudeService;
+  private promptBuilder: PromptBuilderService;
 
   /**
    * Maximum test retry attempts with fix agent.
@@ -74,6 +80,11 @@ export class ShipCommand extends BaseCommand {
     this.demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
     this.prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
     this.reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
+
+    // Initialize fix agent services
+    this.claude = new ClaudeService();
+    const templateEngine = new TemplateEngine();
+    this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
   }
 
   /**
@@ -238,10 +249,30 @@ export class ShipCommand extends BaseCommand {
         this.logger.info('Running fix agent to address test failures...');
         console.log('');
 
-        // TODO: Implement fix agent invocation
-        // For now, just retry without fix
-        // In future, parse test output and generate fix prompt for Claude agent
-        this.logger.warn('Fix agent not yet implemented - retrying tests...');
+        // Extract error message from error
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        // Generate fix prompt
+        const fixPrompt = await this.promptBuilder.assembleFixPrompt(errorMessage);
+
+        // Run fix agent
+        const logFile = path.join(this.projectRoot || process.cwd(), '.rig-logs', `fix-attempt-${attempt}.log`);
+
+        try {
+          const config = this.config.get();
+          await this.claude.run({
+            prompt: fixPrompt,
+            maxTurns: config.agent.max_turns,
+            allowedTools: 'all',
+            logFile,
+          });
+
+          this.logger.success('Fix agent completed. Retrying tests...');
+          console.log('');
+        } catch (fixError) {
+          this.logger.warn('Fix agent encountered an error. Retrying tests anyway...');
+          console.log('');
+        }
       }
     }
   }
@@ -259,10 +290,7 @@ export class ShipCommand extends BaseCommand {
       const issue = await this.github.viewIssue(issueNumber);
 
       // Check if issue is still open
-      // Note: viewIssue should return issue state, but current implementation
-      // may not include it. For now, assume if we can fetch it, it exists.
-      // TODO: Update GitHubService.viewIssue() to return state field
-      return false;
+      return issue.state !== 'OPEN';
     } catch (error) {
       // Issue doesn't exist or can't be fetched
       return true;

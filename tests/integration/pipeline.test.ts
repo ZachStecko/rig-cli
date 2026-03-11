@@ -120,6 +120,7 @@ describe('Pipeline Integration Tests', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'fullstack' }, { name: 'P1' }, { name: 'Phase 1: MVP' }],
         body: 'Implement user dashboard with profile and settings',
+        state: 'OPEN',
       }),
       issueBody: vi.fn().mockResolvedValue('Implement user dashboard with profile and settings'),
       issueTitle: vi.fn().mockResolvedValue('Add user dashboard'),

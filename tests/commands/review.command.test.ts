@@ -88,6 +88,12 @@ describe('ReviewCommand', () => {
         title: 'Test Issue',
         labels: [{ name: 'fullstack' }],
       }),
+      viewPr: vi.fn().mockResolvedValue({
+        number: 123,
+        title: 'Test PR',
+        body: 'Test PR body',
+        headRefName: 'issue-42-test-issue',
+      }),
     } as any;
 
     mockGuard = {
@@ -129,10 +135,52 @@ describe('ReviewCommand', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it('exits with error when --pr option is used', async () => {
+    it('uses --pr option to extract issue from PR branch name', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockGitHub.viewPr).mockResolvedValue({
+        number: 123,
+        title: 'Add user dashboard',
+        body: 'Test PR body',
+        headRefName: 'issue-42-add-user-dashboard',
+      });
+      vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
+        number: 42,
+        title: 'Add user dashboard',
+        labels: [{ name: 'fullstack' }],
+      });
+      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
+      vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
+        'Review prompt for issue 42. Review file: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
+      );
+
       await command.execute({ pr: '123' });
 
-      expect(mockLogger.error).toHaveBeenCalledWith('--pr option not yet implemented. Use --issue instead.');
+      expect(mockGitHub.viewPr).toHaveBeenCalledWith(123);
+      expect(mockGitHub.viewIssue).toHaveBeenCalledWith(42);
+      expect(mockPromptBuilder.assembleReviewPrompt).toHaveBeenCalledWith(42);
+    });
+
+    it('exits with error when --pr has invalid branch format', async () => {
+      vi.mocked(mockGitHub.viewPr).mockResolvedValue({
+        number: 123,
+        title: 'Test PR',
+        body: 'Test PR body',
+        headRefName: 'feature-invalid-branch',
+      });
+
+      await command.execute({ pr: '123' });
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Cannot determine issue number from PR #123 branch: feature-invalid-branch'
+      );
+      expect(mockLogger.info).toHaveBeenCalledWith('Branch name must start with "issue-{number}" format.');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits with error when --pr has invalid PR number', async () => {
+      await command.execute({ pr: 'abc' });
+
+      expect(mockLogger.error).toHaveBeenCalledWith('Invalid PR number: abc');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
