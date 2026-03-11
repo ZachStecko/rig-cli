@@ -6,6 +6,22 @@
   "bin": {
     "rig": "./dist/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zachstecko/rig-cli.git"
+  },
+  "keywords": [
+    "cli",
+    "automation",
+    "github",
+    "claude",
+    "ai",
+    "workflow",
+    "pipeline",
+    "development"
+  ],
+  "author": "Zach Stecko",
+  "license": "MIT",
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
