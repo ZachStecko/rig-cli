@@ -76,18 +76,27 @@ export class LLMService {
       // Parse and validate the JSON response
       let structured: StructuredIssue;
       try {
-        structured = JSON.parse(result.stdout) as StructuredIssue;
+        const response = JSON.parse(result.stdout);
+
+        // Claude CLI wraps the structured output in a metadata object
+        // Extract the actual structured_output field
+        if (response.structured_output) {
+          structured = response.structured_output as StructuredIssue;
+        } else {
+          // Fallback: try to use the response directly (for backward compatibility)
+          structured = response as StructuredIssue;
+        }
       } catch (error) {
-        throw new Error(`Failed to parse structured issue response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        throw new Error(`Failed to parse structured issue response: ${error instanceof Error ? error.message : 'Unknown error'}\nReceived: ${result.stdout.substring(0, 500)}`);
       }
 
       // Validate the structured output
       if (!structured.title?.trim()) {
-        throw new Error('LLM returned an empty title');
+        throw new Error(`LLM returned an empty title`);
       }
 
       if (!structured.body?.trim()) {
-        throw new Error('LLM returned an empty body');
+        throw new Error(`LLM returned an empty body`);
       }
 
       // Enforce GitHub's title length limit

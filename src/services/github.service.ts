@@ -1,5 +1,8 @@
 import { exec } from '../utils/shell.js';
 import { Issue } from '../types/issue.types.js';
+import { writeFile, unlink, mkdtemp } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 /**
  * GitHubService wraps the GitHub CLI (gh) for GitHub operations.
@@ -221,35 +224,52 @@ export class GitHubService {
     labels?: string[];
     assignees?: string[];
   }): Promise<number> {
-    const args = [
-      'issue',
-      'create',
-      '--title',
-      `"${this.escapeQuotes(options.title)}"`,
-      '--body',
-      `"${this.escapeQuotes(options.body)}"`
-    ];
+    // Use temporary files to avoid shell injection with backticks, dollar signs, etc.
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
+    const bodyFile = join(tmpDir, 'body.txt');
 
-    if (options.labels && options.labels.length > 0) {
-      // Validate all labels to prevent command injection
-      options.labels.forEach(label => this.validateLabel(label));
-      args.push('--label', options.labels.join(','));
-    }
+    try {
+      // Write body to temp file
+      await writeFile(bodyFile, options.body, 'utf-8');
 
-    if (options.assignees && options.assignees.length > 0) {
-      // Validate all assignees to prevent command injection
-      options.assignees.forEach(assignee => this.validateUsername(assignee));
-      args.push('--assignee', options.assignees.join(','));
-    }
+      const args = [
+        'issue',
+        'create',
+        '--title',
+        `"${this.escapeQuotes(options.title)}"`,
+        '--body-file',
+        `"${bodyFile}"`
+      ];
 
-    const result = await this.gh(args.join(' '));
-    // gh issue create returns the issue URL on stdout (e.g., https://github.com/owner/repo/issues/123)
-    // Extract the issue number from the URL (handles trailing slashes, query params, anchors)
-    const urlMatch = result.stdout.trim().match(/\/issues\/(\d+)(?:[/?#].*)?$/);
-    if (!urlMatch) {
-      throw new Error(`Failed to extract issue number from gh output: ${result.stdout}`);
+      if (options.labels && options.labels.length > 0) {
+        // Validate all labels to prevent command injection
+        options.labels.forEach(label => this.validateLabel(label));
+        args.push('--label', options.labels.join(','));
+      }
+
+      if (options.assignees && options.assignees.length > 0) {
+        // Validate all assignees to prevent command injection
+        options.assignees.forEach(assignee => this.validateUsername(assignee));
+        args.push('--assignee', options.assignees.join(','));
+      }
+
+      const result = await this.gh(args.join(' '));
+      // gh issue create returns the issue URL on stdout (e.g., https://github.com/owner/repo/issues/123)
+      // Extract the issue number from the URL (handles trailing slashes, query params, anchors)
+      const urlMatch = result.stdout.trim().match(/\/issues\/(\d+)(?:[/?#].*)?$/);
+      if (!urlMatch) {
+        throw new Error(`Failed to extract issue number from gh output: ${result.stdout}`);
+      }
+      return parseInt(urlMatch[1], 10);
+    } finally {
+      // Clean up temporary files
+      try {
+        await unlink(bodyFile).catch(() => {});
+        await unlink(tmpDir).catch(() => {});
+      } catch {
+        // Ignore cleanup errors
+      }
     }
-    return parseInt(urlMatch[1], 10);
   }
 
   /**
@@ -265,27 +285,42 @@ export class GitHubService {
     draft?: boolean;
     base?: string;
   }): Promise<string> {
-    const args = [
-      'pr',
-      'create',
-      '--title',
-      `"${this.escapeQuotes(options.title)}"`,
-      '--body',
-      `"${this.escapeQuotes(options.body)}"`
-    ];
+    // Use temporary files to avoid shell injection
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
+    const bodyFile = join(tmpDir, 'body.txt');
 
-    if (options.draft) {
-      args.push('--draft');
+    try {
+      await writeFile(bodyFile, options.body, 'utf-8');
+
+      const args = [
+        'pr',
+        'create',
+        '--title',
+        `"${this.escapeQuotes(options.title)}"`,
+        '--body-file',
+        `"${bodyFile}"`
+      ];
+
+      if (options.draft) {
+        args.push('--draft');
+      }
+
+      if (options.base) {
+        this.validateBranchName(options.base);
+        args.push('--base', options.base);
+      }
+
+      const result = await this.gh(args.join(' '));
+      // gh pr create returns the PR URL on stdout
+      return result.stdout.trim();
+    } finally {
+      try {
+        await unlink(bodyFile).catch(() => {});
+        await unlink(tmpDir).catch(() => {});
+      } catch {
+        // Ignore cleanup errors
+      }
     }
-
-    if (options.base) {
-      this.validateBranchName(options.base);
-      args.push('--base', options.base);
-    }
-
-    const result = await this.gh(args.join(' '));
-    // gh pr create returns the PR URL on stdout
-    return result.stdout.trim();
   }
 
   /**
@@ -302,17 +337,41 @@ export class GitHubService {
       body?: string;
     }
   ): Promise<void> {
-    const args = ['pr', 'edit', String(prNumber)];
-
-    if (options.title) {
-      args.push('--title', `"${this.escapeQuotes(options.title)}"`);
-    }
-
+    // Use temporary file for body if provided
     if (options.body) {
-      args.push('--body', `"${this.escapeQuotes(options.body)}"`);
-    }
+      const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
+      const bodyFile = join(tmpDir, 'body.txt');
 
-    await this.gh(args.join(' '));
+      try {
+        await writeFile(bodyFile, options.body, 'utf-8');
+
+        const args = ['pr', 'edit', String(prNumber)];
+
+        if (options.title) {
+          args.push('--title', `"${this.escapeQuotes(options.title)}"`);
+        }
+
+        args.push('--body-file', `"${bodyFile}"`);
+
+        await this.gh(args.join(' '));
+      } finally {
+        try {
+          await unlink(bodyFile).catch(() => {});
+          await unlink(tmpDir).catch(() => {});
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+    } else {
+      // Only updating title, no need for temp file
+      const args = ['pr', 'edit', String(prNumber)];
+
+      if (options.title) {
+        args.push('--title', `"${this.escapeQuotes(options.title)}"`);
+      }
+
+      await this.gh(args.join(' '));
+    }
   }
 
   /**
@@ -323,7 +382,21 @@ export class GitHubService {
    * @throws Error if PR doesn't exist or comment fails
    */
   async prComment(prNumber: number, comment: string): Promise<void> {
-    await this.gh(`pr comment ${prNumber} --body "${this.escapeQuotes(comment)}"`);
+    // Use temporary file to avoid shell injection
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
+    const commentFile = join(tmpDir, 'comment.txt');
+
+    try {
+      await writeFile(commentFile, comment, 'utf-8');
+      await this.gh(`pr comment ${prNumber} --body-file "${commentFile}"`);
+    } finally {
+      try {
+        await unlink(commentFile).catch(() => {});
+        await unlink(tmpDir).catch(() => {});
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 
   /**
@@ -436,7 +509,7 @@ export class GitHubService {
    * @throws Error if command fails
    */
   private async gh(command: string): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    const result = await exec(`gh -R . ${command}`, { cwd: this.projectRoot });
+    const result = await exec(`gh ${command}`, { cwd: this.projectRoot });
 
     if (result.exitCode !== 0) {
       throw new Error(
