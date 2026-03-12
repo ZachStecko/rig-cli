@@ -34,7 +34,12 @@ export class PrCommand extends BaseCommand {
   ) {
     super(logger, config, state, git, github, guard, projectRoot);
     const templateEngine = new TemplateEngine();
-    const testRunner = new TestRunnerService(this.projectRoot || process.cwd(), this.git);
+    const testRunner = new TestRunnerService(
+      this.projectRoot || process.cwd(),
+      this.git,
+      this.config,
+      this.logger
+    );
     this.prTemplate = new PrTemplateService(
       this.github,
       this.git,

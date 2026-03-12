@@ -365,8 +365,39 @@ Create a configuration file in your project root:
       "path": "./backend",
       "test_command": "go test ./..."
     }
-  }
+  },
+  "verbose": false
 }
+```
+
+### Verbose Mode
+
+Enable verbose mode to see detailed diagnostic information during command execution:
+
+```json
+{
+  "verbose": true
+}
+```
+
+When enabled, verbose mode shows:
+- **Shell commands** being executed
+- **Timing information** for each operation
+- **Config values** being used
+- **Full command output** on success
+
+This is useful for:
+- Debugging test runner issues
+- Understanding which commands are being used for your component setup
+- Tracking performance of different operations
+- Verifying configuration is being read correctly
+
+Example verbose output:
+```
+[config] Backend directory: backend
+[config] Test command: go test ./...
+  > cd "/path/to/project/backend" && go test ./...
+  ⏱  Backend tests: 2.45s
 ```
 
 ### Component Detection

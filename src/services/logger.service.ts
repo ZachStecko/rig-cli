@@ -9,13 +9,30 @@ import ora, { Ora } from 'ora';
  * This makes it easy to redirect or capture output in tests and production.
  *
  * Note: Colors are force-enabled by default. Set NO_COLOR=1 to disable.
+ *
+ * Verbose mode can be enabled to show detailed debug information including:
+ * - Shell commands being executed
+ * - Timing information for operations
+ * - Configuration values being used
  */
 export class Logger {
+  private verbose: boolean = false;
+
   constructor() {
     // Force color support unless NO_COLOR is set
     if (!process.env.NO_COLOR) {
       chalk.level = 3; // Force truecolor support
     }
+  }
+
+  /**
+   * Enables or disables verbose mode.
+   * In verbose mode, additional debug information is displayed.
+   *
+   * @param enabled - Whether to enable verbose output
+   */
+  setVerbose(enabled: boolean): void {
+    this.verbose = enabled;
   }
   /**
    * Prints an informational message in blue.
@@ -128,5 +145,50 @@ export class Logger {
       spinner.fail(message);
       throw error;
     }
+  }
+
+  /**
+   * Logs a shell command being executed (verbose mode only).
+   * Displays in cyan with a ">" prefix to indicate command execution.
+   *
+   * @param command - Shell command being executed
+   * @example
+   * logger.command("cd backend && go test ./...");
+   * // Output (if verbose): > cd backend && go test ./...
+   */
+  command(command: string): void {
+    if (!this.verbose) return;
+    console.log(chalk.cyan(`  > ${command}`));
+  }
+
+  /**
+   * Logs timing information for an operation (verbose mode only).
+   * Displays elapsed time in a human-readable format.
+   *
+   * @param label - Operation name/description
+   * @param ms - Elapsed time in milliseconds
+   * @example
+   * logger.timing("Backend tests", 2350);
+   * // Output (if verbose): ⏱ Backend tests: 2.35s
+   */
+  timing(label: string, ms: number): void {
+    if (!this.verbose) return;
+    const seconds = (ms / 1000).toFixed(2);
+    console.log(chalk.dim(`  ⏱  ${label}: ${seconds}s`));
+  }
+
+  /**
+   * Logs a configuration value being used (verbose mode only).
+   * Displays config key-value pairs for debugging.
+   *
+   * @param label - Configuration setting name
+   * @param value - Configuration value
+   * @example
+   * logger.config("Backend directory", "./backend");
+   * // Output (if verbose): [config] Backend directory: ./backend
+   */
+  config(label: string, value: any): void {
+    if (!this.verbose) return;
+    console.log(chalk.dim(`  [config] ${label}: ${value}`));
   }
 }

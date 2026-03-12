@@ -13,6 +13,8 @@ vi.mock('fs/promises');
 describe('TestRunnerService', () => {
   let testRunner: TestRunnerService;
   let mockGit: GitService;
+  let mockConfig: any;
+  let mockLogger: any;
   let mockExec: ReturnType<typeof vi.fn>;
   let mockExistsSync: ReturnType<typeof vi.fn>;
   let mockReadFile: ReturnType<typeof vi.fn>;
@@ -31,7 +33,28 @@ describe('TestRunnerService', () => {
       newFilesVsMaster: vi.fn(),
     } as any;
 
-    testRunner = new TestRunnerService(projectRoot, mockGit);
+    mockConfig = {
+      get: vi.fn().mockReturnValue({
+        components: {
+          backend: {
+            path: 'backend',
+            test_command: 'go test ./...',
+          },
+          frontend: {
+            path: 'frontend',
+            test_command: 'npm test',
+          },
+        },
+      }),
+    };
+
+    mockLogger = {
+      config: vi.fn(),
+      timing: vi.fn(),
+      command: vi.fn(),
+    };
+
+    testRunner = new TestRunnerService(projectRoot, mockGit, mockConfig, mockLogger);
   });
 
   afterEach(() => {
@@ -204,7 +227,7 @@ describe('TestRunnerService', () => {
       expect(result.success).toBe(true);
       expect(result.output).toContain('PASS');
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('go test ./... -v'),
+        expect.stringContaining('go test ./...'),
       );
     });
 

@@ -65,6 +65,7 @@ export class BootstrapCommand extends BaseCommand {
     let backendPath: string | null = null;
     let infraPath: string | null = null;
     let serverlessPath: string | null = null;
+    let backendType: 'go' | 'typescript' | undefined = undefined;
 
     // Calculate total steps dynamically
     const totalSteps =
@@ -85,7 +86,7 @@ export class BootstrapCommand extends BaseCommand {
     if (component === 'backend' || component === 'all') {
       backendPath = await this.promptForPath('backend');
       if (backendPath) {
-        await this.bootstrapBackend(backendPath, ++currentStep, totalSteps);
+        backendType = await this.bootstrapBackend(backendPath, ++currentStep, totalSteps);
       }
     }
 
@@ -105,7 +106,7 @@ export class BootstrapCommand extends BaseCommand {
 
     // Save paths to config if provided
     if (frontendPath || backendPath || infraPath || serverlessPath) {
-      await this.saveComponentPaths(frontendPath, backendPath, infraPath, serverlessPath);
+      await this.saveComponentPaths(frontendPath, backendPath, infraPath, serverlessPath, backendType);
     }
 
     console.log('');
@@ -195,8 +196,9 @@ export class BootstrapCommand extends BaseCommand {
    * @param backendPath - Path to backend directory
    * @param step - Current step number
    * @param totalSteps - Total number of steps
+   * @returns Backend type ('go' or 'typescript')
    */
-  private async bootstrapBackend(backendPath: string, step: number, totalSteps: number): Promise<void> {
+  private async bootstrapBackend(backendPath: string, step: number, totalSteps: number): Promise<'go' | 'typescript'> {
     this.logger.step(step, totalSteps, 'Setting up backend test infrastructure...');
     console.log('');
 
@@ -204,7 +206,9 @@ export class BootstrapCommand extends BaseCommand {
     const backendType = await this.prompt('Is this a Go or TypeScript backend? (go/typescript) [go]: ');
     const normalized = (backendType?.trim().toLowerCase()) || 'go';
 
-    if (normalized === 'typescript' || normalized === 'ts') {
+    const finalType: 'go' | 'typescript' = (normalized === 'typescript' || normalized === 'ts') ? 'typescript' : 'go';
+
+    if (finalType === 'typescript') {
       await this.bootstrapBackendTypeScript(backendPath);
     } else {
       // Default to Go (includes empty input)
@@ -213,6 +217,7 @@ export class BootstrapCommand extends BaseCommand {
     }
 
     console.log('');
+    return finalType;
   }
 
   /**
@@ -717,12 +722,14 @@ export const handlers = [
    * @param backendPath - Path to backend directory
    * @param infraPath - Path to infra directory
    * @param serverlessPath - Path to serverless directory
+   * @param backendType - Backend language type ('go' or 'typescript')
    */
   private async saveComponentPaths(
     frontendPath: string | null,
     backendPath: string | null,
     infraPath: string | null,
-    serverlessPath: string | null
+    serverlessPath: string | null,
+    backendType?: 'go' | 'typescript'
   ): Promise<void> {
     try {
       const config = this.config.get();
@@ -739,9 +746,10 @@ export const handlers = [
       }
 
       if (backendPath) {
+        const testCommand = backendType === 'typescript' ? 'npm test' : 'go test ./...';
         config.components.backend = {
           path: backendPath,
-          test_command: 'go test ./...',
+          test_command: testCommand,
         };
       }
 

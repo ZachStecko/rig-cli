@@ -34,7 +34,12 @@ export class TestCommand extends BaseCommand {
     projectRoot?: string
   ) {
     super(logger, config, state, git, github, guard, projectRoot);
-    this.testRunner = new TestRunnerService(this.projectRoot || process.cwd(), this.git);
+    this.testRunner = new TestRunnerService(
+      this.projectRoot || process.cwd(),
+      this.git,
+      this.config,
+      this.logger
+    );
     const templateEngine = new TemplateEngine();
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
   }

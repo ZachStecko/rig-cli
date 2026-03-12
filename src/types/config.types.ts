@@ -50,6 +50,10 @@ export interface ComponentConfig {
   path: string;
   /** Command to run tests for this component */
   test_command: string;
+  /** Command to run linting (optional) */
+  lint_command?: string;
+  /** Command to build/compile (optional) */
+  build_command?: string;
 }
 
 /**
@@ -72,6 +76,8 @@ export interface RigConfig {
   test: TestConfig;
   demo: DemoConfig;
   pr: PrConfig;
+  /** Enable verbose debug output (default: false) */
+  verbose?: boolean;
   components?: ComponentsConfig;
 }
 
@@ -85,4 +91,5 @@ export const DEFAULT_CONFIG: RigConfig = {
   test: { require_new_tests: true },
   demo: { enabled: true },
   pr: { draft: false, reviewers: [] },
+  verbose: false,
 };

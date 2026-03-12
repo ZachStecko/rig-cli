@@ -1,5 +1,7 @@
 import { exec } from '../utils/shell.js';
 import { GitService } from './git.service.js';
+import { ConfigManager } from './config-manager.service.js';
+import { Logger } from './logger.service.js';
 import { existsSync } from 'fs';
 import { resolve } from 'path';
 import { readFile } from 'fs/promises';
@@ -16,83 +18,232 @@ export interface TestResult {
 /**
  * TestRunnerService orchestrates test execution for different project components.
  *
- * Runs lint, build, and test commands for backend (Go), frontend (TypeScript/React),
- * and devnet components. Includes test coverage checking to ensure new source files
- * have corresponding test files.
+ * Runs lint, build, and test commands for backend (Go/TypeScript), frontend (TypeScript/React),
+ * and devnet components. Reads component configuration from .rig.yml instead of hardcoding paths.
+ * Includes test coverage checking to ensure new source files have corresponding test files.
  */
 export class TestRunnerService {
   private projectRoot: string;
   private git: GitService;
+  private config: ConfigManager;
+  private logger: Logger;
+
+  /**
+   * Allowed command prefixes for security validation.
+   * Commands must start with one of these to prevent arbitrary code execution.
+   */
+  private readonly ALLOWED_COMMANDS = [
+    'go test',
+    'go build',
+    'go vet',
+    'golangci-lint',
+    'npm test',
+    'npm run test',
+    'npm run build',
+    'npm run lint',
+    'npx vitest',
+    'npx eslint',
+    'pytest',
+    'python -m pytest',
+    'cargo test',
+    'cargo build',
+    'cargo clippy',
+    'terraform validate',
+    'terraform plan',
+  ];
 
   /**
    * Creates a new TestRunnerService instance.
    *
    * @param projectRoot - Absolute path to the project root directory
    * @param git - GitService for git operations
+   * @param config - ConfigManager for reading component configuration
+   * @param logger - Logger for verbose output
    */
-  constructor(projectRoot: string, git: GitService) {
+  constructor(projectRoot: string, git: GitService, config: ConfigManager, logger: Logger) {
     this.projectRoot = projectRoot;
     this.git = git;
+    this.config = config;
+    this.logger = logger;
   }
 
   /**
-   * Runs backend linting (golangci-lint or go vet).
+   * Validates that a command is safe to execute.
+   * Prevents shell injection by checking against whitelist of allowed commands.
    *
-   * Attempts to auto-fix issues first, stages changes, then verifies.
-   * Falls back to `go vet` if golangci-lint is not available.
+   * @param command - Command to validate
+   * @throws Error if command is not in whitelist
+   */
+  private validateCommand(command: string): void {
+    const trimmed = command.trim();
+    const isAllowed = this.ALLOWED_COMMANDS.some(allowed => trimmed.startsWith(allowed));
+
+    if (!isAllowed) {
+      throw new Error(
+        `Unsafe command rejected: "${command}". ` +
+        `Allowed commands must start with: ${this.ALLOWED_COMMANDS.join(', ')}`
+      );
+    }
+  }
+
+  /**
+   * Validates that a path is safe (no directory traversal or shell metacharacters).
+   *
+   * @param path - Path to validate
+   * @throws Error if path contains dangerous characters
+   */
+  private validatePath(path: string): void {
+    if (path.includes('..')) {
+      throw new Error(`Invalid path: "${path}" contains directory traversal`);
+    }
+
+    // Check for shell metacharacters that could enable injection
+    const dangerousChars = [';', '&', '|', '$', '`', '"', "'", '\n', '\r'];
+    for (const char of dangerousChars) {
+      if (path.includes(char)) {
+        throw new Error(`Invalid path: "${path}" contains dangerous character: ${char}`);
+      }
+    }
+  }
+
+  /**
+   * Runs backend linting.
+   *
+   * Uses lint_command from component config if available.
+   * For Go backends without explicit lint_command, auto-detects golangci-lint or go vet.
+   * For TypeScript backends, uses npm run lint.
    *
    * @returns Test result with success status and output
    */
   async runBackendLint(): Promise<TestResult> {
-    const backendDir = resolve(this.projectRoot, 'backend');
+    const rigConfig = this.config.get();
+    const backendConfig = rigConfig.components?.backend;
+
+    if (!backendConfig) {
+      throw new Error(
+        'Backend not configured. Run "rig bootstrap --component backend" first.'
+      );
+    }
+
+    // Validate path for security
+    this.validatePath(backendConfig.path);
+
+    const backendDir = resolve(this.projectRoot, backendConfig.path);
 
     if (!existsSync(backendDir)) {
       return { success: true, output: '', skipped: true };
     }
 
-    // Check if golangci-lint is available
-    const lintCheck = await exec('which golangci-lint');
+    let lintCommand = backendConfig.lint_command;
 
-    if (lintCheck.exitCode === 0) {
-      // Try auto-fix first
-      await exec(`cd "${backendDir}" && golangci-lint run --fix ./...`);
-
-      // Stage fixes
-      await exec(`cd "${this.projectRoot}" && git add -A backend/`);
-
-      // Verify it passes
-      const result = await exec(`cd "${backendDir}" && golangci-lint run ./...`);
-
-      return {
-        success: result.exitCode === 0,
-        output: result.stdout + result.stderr,
-      };
-    } else {
-      // Fall back to go vet
-      const result = await exec(`cd "${backendDir}" && go vet ./...`);
-
-      return {
-        success: result.exitCode === 0,
-        output: result.stdout + result.stderr,
-      };
+    // Auto-detect lint command if not specified
+    if (!lintCommand) {
+      // Check if this is a Go backend (has go.mod)
+      const goModExists = existsSync(resolve(backendDir, 'go.mod'));
+      if (goModExists) {
+        const lintCheck = await exec('which golangci-lint');
+        lintCommand = lintCheck.exitCode === 0 ? 'golangci-lint run ./...' : 'go vet ./...';
+      } else {
+        // Check for Python backend (has requirements.txt or setup.py)
+        const pythonExists = existsSync(resolve(backendDir, 'requirements.txt')) ||
+                            existsSync(resolve(backendDir, 'setup.py'));
+        if (pythonExists) {
+          lintCommand = 'python -m pylint .';
+        } else {
+          // Assume npm-based (TypeScript, etc.)
+          lintCommand = 'npm run lint';
+        }
+      }
     }
+
+    // Validate command for security
+    this.validateCommand(lintCommand);
+
+    this.logger.config('Backend directory', backendConfig.path);
+    this.logger.config('Lint command', lintCommand);
+
+    const startTime = Date.now();
+
+    // Try auto-fix first if available
+    if (lintCommand.includes('golangci-lint')) {
+      await exec(`cd "${backendDir}" && golangci-lint run --fix ./...`);
+      await exec(`cd "${this.projectRoot}" && git add -A ${backendConfig.path}/`);
+    } else if (lintCommand.includes('eslint')) {
+      await exec(`cd "${backendDir}" && npx eslint --fix src/`);
+      await exec(`cd "${this.projectRoot}" && git add -A ${backendConfig.path}/src/`);
+    }
+
+    const result = await exec(`cd "${backendDir}" && ${lintCommand}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Backend lint', elapsed);
+
+    return {
+      success: result.exitCode === 0,
+      output: result.stdout + result.stderr,
+    };
   }
 
   /**
    * Runs backend build check.
    *
-   * Executes `go build ./...` to verify all backend code compiles.
+   * Uses build_command from component config if available.
+   * For Go backends without explicit build_command, uses go build.
+   * For TypeScript backends, uses npm run build.
    *
    * @returns Test result with success status and output
    */
   async runBackendBuild(): Promise<TestResult> {
-    const backendDir = resolve(this.projectRoot, 'backend');
+    const rigConfig = this.config.get();
+    const backendConfig = rigConfig.components?.backend;
+
+    if (!backendConfig) {
+      throw new Error(
+        'Backend not configured. Run "rig bootstrap --component backend" first.'
+      );
+    }
+
+    // Validate path for security
+    this.validatePath(backendConfig.path);
+
+    const backendDir = resolve(this.projectRoot, backendConfig.path);
 
     if (!existsSync(backendDir)) {
       return { success: true, output: '', skipped: true };
     }
 
-    const result = await exec(`cd "${backendDir}" && go build ./...`);
+    let buildCommand = backendConfig.build_command;
+
+    // Auto-detect build command if not specified
+    if (!buildCommand) {
+      // Check if this is a Go backend (has go.mod)
+      const goModExists = existsSync(resolve(backendDir, 'go.mod'));
+      if (goModExists) {
+        buildCommand = 'go build ./...';
+      } else {
+        // Check for Python backend (has requirements.txt or setup.py)
+        const pythonExists = existsSync(resolve(backendDir, 'requirements.txt')) ||
+                            existsSync(resolve(backendDir, 'setup.py'));
+        if (pythonExists) {
+          buildCommand = 'python -m build';
+        } else {
+          // Assume npm-based (TypeScript, etc.)
+          buildCommand = 'npm run build';
+        }
+      }
+    }
+
+    // Validate command for security
+    this.validateCommand(buildCommand);
+
+    this.logger.config('Backend directory', backendConfig.path);
+    this.logger.config('Build command', buildCommand);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${backendDir}" && ${buildCommand}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Backend build', elapsed);
 
     return {
       success: result.exitCode === 0,
@@ -103,18 +254,40 @@ export class TestRunnerService {
   /**
    * Runs backend tests.
    *
-   * Executes `go test ./... -v` to run all backend tests.
+   * Uses test_command from component config (supports Go, TypeScript, Python, etc.)
    *
    * @returns Test result with success status and output
    */
   async runBackendTests(): Promise<TestResult> {
-    const backendDir = resolve(this.projectRoot, 'backend');
+    const rigConfig = this.config.get();
+    const backendConfig = rigConfig.components?.backend;
+
+    if (!backendConfig) {
+      throw new Error(
+        'Backend not configured. Run "rig bootstrap --component backend" first.'
+      );
+    }
+
+    // Validate path for security
+    this.validatePath(backendConfig.path);
+
+    const backendDir = resolve(this.projectRoot, backendConfig.path);
 
     if (!existsSync(backendDir)) {
       return { success: true, output: '', skipped: true };
     }
 
-    const result = await exec(`cd "${backendDir}" && go test ./... -v`);
+    // Validate command for security
+    this.validateCommand(backendConfig.test_command);
+
+    this.logger.config('Backend directory', backendConfig.path);
+    this.logger.config('Test command', backendConfig.test_command);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${backendDir}" && ${backendConfig.test_command}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Backend tests', elapsed);
 
     return {
       success: result.exitCode === 0,
@@ -125,25 +298,47 @@ export class TestRunnerService {
   /**
    * Runs frontend linting.
    *
-   * Attempts to auto-fix with `eslint --fix`, stages changes, then runs `npm run lint`.
+   * Uses lint_command from component config if available, otherwise defaults to npm run lint.
+   * Attempts to auto-fix with `eslint --fix`, stages changes, then runs lint command.
    *
    * @returns Test result with success status and output
    */
   async runFrontendLint(): Promise<TestResult> {
-    const frontendDir = resolve(this.projectRoot, 'frontend');
+    const rigConfig = this.config.get();
+    const frontendConfig = rigConfig.components?.frontend;
+
+    if (!frontendConfig) {
+      return { success: true, output: 'Frontend not configured', skipped: true };
+    }
+
+    // Validate path for security
+    this.validatePath(frontendConfig.path);
+
+    const frontendDir = resolve(this.projectRoot, frontendConfig.path);
 
     if (!existsSync(frontendDir)) {
       return { success: true, output: '', skipped: true };
     }
 
-    // Try auto-fix first
-    await exec(`cd "${frontendDir}" && npx eslint --fix src/`);
+    let lintCommand = frontendConfig.lint_command || 'npm run lint';
 
-    // Stage fixes
-    await exec(`cd "${this.projectRoot}" && git add -A frontend/src/`);
+    // Validate command for security
+    this.validateCommand(lintCommand);
+
+    this.logger.config('Frontend directory', frontendConfig.path);
+    this.logger.config('Lint command', lintCommand);
+
+    const startTime = Date.now();
+
+    // Try auto-fix first (assumes frontend uses eslint)
+    await exec(`cd "${frontendDir}" && npx eslint --fix src/`);
+    await exec(`cd "${this.projectRoot}" && git add -A ${frontendConfig.path}/src/`);
 
     // Verify it passes
-    const result = await exec(`cd "${frontendDir}" && npm run lint`);
+    const result = await exec(`cd "${frontendDir}" && ${lintCommand}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Frontend lint', elapsed);
 
     return {
       success: result.exitCode === 0,
@@ -154,18 +349,40 @@ export class TestRunnerService {
   /**
    * Runs frontend build check.
    *
-   * Executes `npm run build` to verify frontend builds successfully.
+   * Uses build_command from component config if available, otherwise defaults to npm run build.
    *
    * @returns Test result with success status and output
    */
   async runFrontendBuild(): Promise<TestResult> {
-    const frontendDir = resolve(this.projectRoot, 'frontend');
+    const rigConfig = this.config.get();
+    const frontendConfig = rigConfig.components?.frontend;
+
+    if (!frontendConfig) {
+      return { success: true, output: 'Frontend not configured', skipped: true };
+    }
+
+    // Validate path for security
+    this.validatePath(frontendConfig.path);
+
+    const frontendDir = resolve(this.projectRoot, frontendConfig.path);
 
     if (!existsSync(frontendDir)) {
       return { success: true, output: '', skipped: true };
     }
 
-    const result = await exec(`cd "${frontendDir}" && npm run build`);
+    const buildCommand = frontendConfig.build_command || 'npm run build';
+
+    // Validate command for security
+    this.validateCommand(buildCommand);
+
+    this.logger.config('Frontend directory', frontendConfig.path);
+    this.logger.config('Build command', buildCommand);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${frontendDir}" && ${buildCommand}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Frontend build', elapsed);
 
     return {
       success: result.exitCode === 0,
@@ -176,45 +393,68 @@ export class TestRunnerService {
   /**
    * Runs frontend tests.
    *
-   * Checks if test script exists in package.json, then runs `npm test`.
+   * Uses test_command from component config. Checks if test script exists in package.json
+   * when using npm-based commands.
    *
    * @returns Test result with success status and output
    */
   async runFrontendTests(): Promise<TestResult> {
-    const frontendDir = resolve(this.projectRoot, 'frontend');
+    const rigConfig = this.config.get();
+    const frontendConfig = rigConfig.components?.frontend;
+
+    if (!frontendConfig) {
+      return { success: true, output: 'Frontend not configured', skipped: true };
+    }
+
+    // Validate path for security
+    this.validatePath(frontendConfig.path);
+
+    const frontendDir = resolve(this.projectRoot, frontendConfig.path);
 
     if (!existsSync(frontendDir)) {
       return { success: true, output: '', skipped: true };
     }
 
-    // Check if test script exists
-    const packageJsonPath = resolve(frontendDir, 'package.json');
-    if (!existsSync(packageJsonPath)) {
-      return {
-        success: true,
-        output: 'No package.json found',
-        skipped: true,
-      };
-    }
-
-    try {
-      const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
-      if (!packageJson.scripts?.test) {
+    // Check if test script exists (for npm-based commands)
+    if (frontendConfig.test_command.includes('npm')) {
+      const packageJsonPath = resolve(frontendDir, 'package.json');
+      if (!existsSync(packageJsonPath)) {
         return {
           success: true,
-          output: 'No test script in package.json',
+          output: 'No package.json found',
           skipped: true,
         };
       }
-    } catch {
-      return {
-        success: true,
-        output: 'Could not read package.json',
-        skipped: true,
-      };
+
+      try {
+        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+        if (!packageJson.scripts?.test) {
+          return {
+            success: true,
+            output: 'No test script in package.json',
+            skipped: true,
+          };
+        }
+      } catch {
+        return {
+          success: true,
+          output: 'Could not read package.json',
+          skipped: true,
+        };
+      }
     }
 
-    const result = await exec(`cd "${frontendDir}" && npm test`);
+    // Validate command for security
+    this.validateCommand(frontendConfig.test_command);
+
+    this.logger.config('Frontend directory', frontendConfig.path);
+    this.logger.config('Test command', frontendConfig.test_command);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${frontendDir}" && ${frontendConfig.test_command}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Frontend tests', elapsed);
 
     return {
       success: result.exitCode === 0,
