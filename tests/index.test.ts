@@ -12,7 +12,7 @@ describe('CLI entry point', () => {
 
   it('--version prints version', () => {
     const out = execSync('npx tsx src/index.ts --version', { cwd: ROOT, encoding: 'utf-8' });
-    expect(out.trim()).toBe('0.1.0');
+    expect(out.trim()).toBe('0.1.2');
   });
 
   it('--help prints description', () => {

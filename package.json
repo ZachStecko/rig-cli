@@ -1,6 +1,6 @@
 {
   "name": "rig-cli",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Automated issue-to-PR pipeline using Claude Code",
   "type": "module",
   "bin": {

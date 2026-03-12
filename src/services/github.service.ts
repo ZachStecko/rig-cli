@@ -209,6 +209,50 @@ export class GitHubService {
   }
 
   /**
+   * Creates a new issue.
+   *
+   * @param options - Issue creation options
+   * @returns Created issue number
+   * @throws Error if issue creation fails
+   */
+  async createIssue(options: {
+    title: string;
+    body: string;
+    labels?: string[];
+    assignees?: string[];
+  }): Promise<number> {
+    const args = [
+      'issue',
+      'create',
+      '--title',
+      `"${this.escapeQuotes(options.title)}"`,
+      '--body',
+      `"${this.escapeQuotes(options.body)}"`
+    ];
+
+    if (options.labels && options.labels.length > 0) {
+      // Validate all labels to prevent command injection
+      options.labels.forEach(label => this.validateLabel(label));
+      args.push('--label', options.labels.join(','));
+    }
+
+    if (options.assignees && options.assignees.length > 0) {
+      // Validate all assignees to prevent command injection
+      options.assignees.forEach(assignee => this.validateUsername(assignee));
+      args.push('--assignee', options.assignees.join(','));
+    }
+
+    const result = await this.gh(args.join(' '));
+    // gh issue create returns the issue URL on stdout (e.g., https://github.com/owner/repo/issues/123)
+    // Extract the issue number from the URL (handles trailing slashes, query params, anchors)
+    const urlMatch = result.stdout.trim().match(/\/issues\/(\d+)(?:[/?#].*)?$/);
+    if (!urlMatch) {
+      throw new Error(`Failed to extract issue number from gh output: ${result.stdout}`);
+    }
+    return parseInt(urlMatch[1], 10);
+  }
+
+  /**
    * Creates a new pull request.
    *
    * @param options - PR creation options

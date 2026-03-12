@@ -26,6 +26,7 @@ import { PrCommand } from './commands/pr.command.js';
 import { ReviewCommand } from './commands/review.command.js';
 import { ShipCommand } from './commands/ship.command.js';
 import { BootstrapCommand } from './commands/bootstrap.command.js';
+import { CreateIssueCommand } from './commands/create-issue.command.js';
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -163,6 +164,15 @@ program
   .action(async (options) => {
     const bootstrapCommand = new BootstrapCommand(logger, config, state, git, github, guard, projectRoot);
     await bootstrapCommand.execute(options);
+  });
+
+// Register create issue command
+program
+  .command('create-issue')
+  .description('Create a new GitHub issue interactively')
+  .action(async () => {
+    const createIssueCommand = new CreateIssueCommand(logger, config, state, git, github, guard, projectRoot);
+    await createIssueCommand.execute();
   });
 
 program.parse();
