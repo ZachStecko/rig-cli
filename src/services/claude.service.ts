@@ -15,6 +15,8 @@ export interface ClaudeRunOptions {
   logFile: string;
   /** Enable verbose output (default: false) */
   verbose?: boolean;
+  /** Permission mode for file operations: 'default', 'bypassPermissions', 'acceptEdits', 'dontAsk', 'plan', or 'auto' (default: 'bypassPermissions') */
+  permissionMode?: 'default' | 'bypassPermissions' | 'acceptEdits' | 'dontAsk' | 'plan' | 'auto';
 }
 
 /**
@@ -58,6 +60,11 @@ export class ClaudeService {
     // Only add --verbose if explicitly enabled
     if (options.verbose) {
       args.push('--verbose');
+    }
+
+    // Add permission mode if specified
+    if (options.permissionMode) {
+      args.push('--permission-mode', options.permissionMode);
     }
 
     args.push('--output-format', 'stream-json');

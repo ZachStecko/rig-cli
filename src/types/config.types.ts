@@ -4,6 +4,8 @@
 export interface AgentConfig {
   /** Maximum turns for Claude agent execution (default: 80) */
   max_turns: number;
+  /** Permission mode for file operations: 'default' requires approval, 'bypassPermissions' auto-approves all, 'acceptEdits' accepts edits, 'dontAsk' skips prompts, 'plan' for plan mode, 'auto' for automatic (default: 'bypassPermissions') */
+  permission_mode?: 'default' | 'bypassPermissions' | 'acceptEdits' | 'dontAsk' | 'plan' | 'auto';
 }
 
 /**
@@ -86,7 +88,7 @@ export interface RigConfig {
  * These are used when .rig.yml is missing or fields are omitted.
  */
 export const DEFAULT_CONFIG: RigConfig = {
-  agent: { max_turns: 80 },
+  agent: { max_turns: 80, permission_mode: 'bypassPermissions' },
   queue: { default_phase: null, default_component: null },
   test: { require_new_tests: true },
   demo: { enabled: true },

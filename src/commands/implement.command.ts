@@ -145,10 +145,11 @@ export class ImplementCommand extends BaseCommand {
     const component = this.promptBuilder.detectComponent(labels);
     const allowedTools = this.promptBuilder.buildAllowedTools(component);
 
-    // Get max turns and verbose from config
+    // Get max turns, verbose, and permission mode from config
     const rigConfig = this.config.get();
     const maxTurns = rigConfig.agent.max_turns || 20;
     const verbose = rigConfig.verbose || false;
+    const permissionMode = rigConfig.agent.permission_mode || 'default';
 
     // Prepare log file
     const logFile = path.join(
@@ -170,6 +171,7 @@ export class ImplementCommand extends BaseCommand {
       this.logger.info(`  Max turns: ${maxTurns}`);
       this.logger.info(`  Allowed tools: ${allowedTools}`);
       this.logger.info(`  Verbose: ${verbose}`);
+      this.logger.info(`  Permission mode: ${permissionMode}`);
       this.logger.info(`  Log file: ${logFile}`);
       console.log('');
       this.logger.success('Dry-run complete. Use without --dry-run to execute.');
@@ -181,18 +183,51 @@ export class ImplementCommand extends BaseCommand {
     console.log('');
 
     try {
+      // Capture git state before running Claude to detect changes (uncommitted or committed)
+      const changesBefore = await this.git.getStatus();
+      const commitBefore = await this.git.getCurrentCommit();
+
       const child = await this.claude.run({
         prompt,
         maxTurns,
         allowedTools,
         logFile,
         verbose,
+        permissionMode,
       });
 
       // Stream output to console
       await this.streamProcess(child);
 
-      // Mark implementation complete
+      // Verify that changes were made (either uncommitted files or new commits)
+      const changesAfter = await this.git.getStatus();
+      const commitAfter = await this.git.getCurrentCommit();
+
+      const hasUncommittedChanges = changesBefore !== changesAfter;
+      const hasNewCommits = commitBefore !== commitAfter;
+
+      // If neither uncommitted changes nor new commits were detected, mark as failed
+      if (!hasUncommittedChanges && !hasNewCommits) {
+        // No changes detected - likely a permission error or failure
+        await this.state.write({
+          ...state,
+          stage: 'implement',
+          stages: {
+            ...state.stages,
+            implement: 'failed',
+          },
+        });
+
+        console.log('');
+        this.logger.error('Implementation failed: No file changes detected');
+        this.logger.dim('Claude Code did not modify any files or create commits during execution.');
+        this.logger.dim('This typically indicates permission errors prevented file modifications.');
+        this.logger.dim(`Check log for details: ${logFile}`);
+        process.exit(1);
+        return; // For testing
+      }
+
+      // Mark implementation complete (only if changes detected)
       await this.state.write({
         ...state,
         stage: 'implement',
@@ -251,25 +286,49 @@ export class ImplementCommand extends BaseCommand {
             // Try to parse as JSON (stream-json format)
             const parsed = JSON.parse(line);
 
-            // Format based on the type of message
-            if (parsed.type === 'tool_use') {
-              // Show tool usage in a clean format
+            // Handle assistant messages with tool uses
+            if (parsed.type === 'assistant' && parsed.message?.content) {
+              for (const item of parsed.message.content) {
+                if (item.type === 'tool_use') {
+                  this.formatToolUse(item.name, item.input);
+                } else if (item.type === 'text' && item.text) {
+                  process.stdout.write(item.text);
+                }
+              }
+            }
+            // Handle user messages (errors, results)
+            else if (parsed.type === 'user' && parsed.message?.content) {
+              for (const item of parsed.message.content) {
+                if (item.type === 'tool_result' && item.is_error) {
+                  // Warn about permission errors instead of silently ignoring them
+                  if (item.content?.includes('requested permissions')) {
+                    this.logger.warn('Permission required - operation skipped');
+                  } else {
+                    this.logger.error(item.content || 'Tool error');
+                  }
+                }
+              }
+            }
+            // Handle direct tool_use format (fallback)
+            else if (parsed.type === 'tool_use') {
               const toolName = parsed.name || parsed.tool || 'unknown';
               this.formatToolUse(toolName, parsed.input);
-            } else if (parsed.type === 'text' || parsed.text) {
-              // Show text output
+            }
+            // Handle text messages
+            else if (parsed.type === 'text' || parsed.text) {
               const text = parsed.text || parsed.content || '';
               if (text.trim()) {
                 process.stdout.write(text);
               }
-            } else if (parsed.type === 'error') {
-              // Show errors in red
+            }
+            // Handle errors
+            else if (parsed.type === 'error') {
               this.logger.error(parsed.message || JSON.stringify(parsed));
-            } else {
-              // Unknown JSON format - only show if it looks important
-              if (parsed.type !== 'thinking' && parsed.type !== 'debug') {
-                process.stdout.write(line + '\n');
-              }
+            }
+            // Skip thinking, debug, and other internal messages
+            else if (parsed.type !== 'thinking' && parsed.type !== 'debug' && parsed.type !== 'session') {
+              // Unknown format - show it in case it's important
+              process.stdout.write(line + '\n');
             }
           } catch (e) {
             // Not JSON, treat as regular output

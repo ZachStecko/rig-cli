@@ -30,6 +30,30 @@ export class GitService {
   }
 
   /**
+   * Gets the raw git status output (porcelain format).
+   * Useful for comparing git state before and after operations.
+   *
+   * @returns Raw git status output (one line per changed file)
+   * @throws Error if git command fails
+   */
+  async getStatus(): Promise<string> {
+    const result = await this.git('status --porcelain');
+    return result.stdout.trim();
+  }
+
+  /**
+   * Gets the current commit hash (HEAD).
+   * Useful for detecting if new commits were made during an operation.
+   *
+   * @returns Current commit SHA hash
+   * @throws Error if git command fails or not in a git repository
+   */
+  async getCurrentCommit(): Promise<string> {
+    const result = await this.git('rev-parse HEAD');
+    return result.stdout.trim();
+  }
+
+  /**
    * Gets the name of the current branch.
    *
    * @returns Current branch name (e.g., "main", "issue-123-fix-bug")
