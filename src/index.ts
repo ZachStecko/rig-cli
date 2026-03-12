@@ -19,6 +19,7 @@ import { StatusCommand } from './commands/status.command.js';
 import { QueueCommand } from './commands/queue.command.js';
 import { NextCommand } from './commands/next.command.js';
 import { ResetCommand } from './commands/reset.command.js';
+import { RollbackCommand } from './commands/rollback.command.js';
 import { ImplementCommand } from './commands/implement.command.js';
 import { TestCommand } from './commands/test.command.js';
 import { DemoCommand } from './commands/demo.command.js';
@@ -97,6 +98,18 @@ program
     logger.setVerbose(config.get().verbose || false);
     const resetCommand = new ResetCommand(logger, config, state, git, github, guard, projectRoot);
     await resetCommand.execute();
+  });
+
+// Register rollback command
+program
+  .command('rollback')
+  .description('Completely undo all work for current issue (deletes branch, closes PR, clears state)')
+  .option('--no-close-pr', 'Do not close any open PRs')
+  .action(async (options) => {
+    await config.load();
+    logger.setVerbose(config.get().verbose || false);
+    const rollbackCommand = new RollbackCommand(logger, config, state, git, github, guard, projectRoot);
+    await rollbackCommand.execute(options);
   });
 
 // Register implement command

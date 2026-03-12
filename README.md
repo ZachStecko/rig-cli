@@ -307,6 +307,37 @@ Warning: This abandons the current issue. Use when:
 - Pipeline is stuck or corrupted
 - Issue has been closed/merged externally
 
+Note: This only clears the state file. The feature branch remains intact locally.
+
+#### `rig rollback`
+
+Completely undoes all work for the current issue.
+
+```bash
+rig rollback                       # Rollback with PR closure
+rig rollback --no-close-pr         # Keep PR open
+```
+
+This command:
+
+- Closes any open PRs for this branch (optional)
+- Deletes the feature branch locally
+- Deletes the remote branch if it was pushed
+- Returns to main/master branch
+- Cleans up all logs, reviews, and demos
+- Clears pipeline state
+
+Use when:
+
+- You want to completely start over on an issue
+- The implementation went in the wrong direction
+- You want to abandon the issue entirely
+
+Difference from `rig reset`:
+
+- `rig reset`: Only clears state, keeps branch and code
+- `rig rollback`: Deletes everything, complete rollback to before you started
+
 #### `rig bootstrap`
 
 Sets up test infrastructure for your project.

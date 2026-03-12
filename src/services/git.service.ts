@@ -101,6 +101,52 @@ export class GitService {
   }
 
   /**
+   * Deletes a branch both locally and remotely.
+   *
+   * @param branchName - Name of the branch to delete
+   * @param options - Options for branch deletion
+   * @param options.force - Force delete even if not fully merged (default: true)
+   * @param options.remote - Also delete from remote (default: false)
+   * @throws Error if branch deletion fails
+   */
+  async deleteBranch(branchName: string, options: { force?: boolean; remote?: boolean } = {}): Promise<void> {
+    const { force = true, remote = false } = options;
+    this.validateBranchName(branchName);
+
+    // Delete local branch
+    const deleteFlag = force ? '-D' : '-d';
+    await this.git(`branch ${deleteFlag} ${branchName}`, { ignoreErrors: true });
+
+    // Delete remote branch if requested
+    if (remote) {
+      await this.git(`push origin --delete ${branchName}`, { ignoreErrors: true });
+    }
+  }
+
+  /**
+   * Checks if a branch exists locally.
+   *
+   * @param branchName - Name of the branch to check
+   * @returns True if branch exists, false otherwise
+   */
+  async branchExists(branchName: string): Promise<boolean> {
+    const result = await this.git(`rev-parse --verify ${branchName}`, { ignoreErrors: true });
+    return result.exitCode === 0;
+  }
+
+  /**
+   * Checks if a branch exists on remote.
+   *
+   * @param branchName - Name of the branch to check
+   * @returns True if branch exists on remote, false otherwise
+   */
+  async remoteBranchExists(branchName: string): Promise<boolean> {
+    this.validateBranchName(branchName);
+    const result = await this.git(`ls-remote --heads origin ${branchName}`, { ignoreErrors: true });
+    return result.exitCode === 0 && result.stdout.trim().length > 0;
+  }
+
+  /**
    * Gets diff statistics against master/main branch.
    * Returns lines added/removed/changed.
    *

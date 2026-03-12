@@ -1,11 +1,4 @@
 import { BaseCommand } from './base-command.js';
-import { Logger } from '../services/logger.service.js';
-import { ConfigManager } from '../services/config-manager.service.js';
-import { StateManager } from '../services/state-manager.service.js';
-import { GitService } from '../services/git.service.js';
-import { GitHubService } from '../services/github.service.js';
-import { GuardService } from '../services/guard.service.js';
-import * as readline from 'readline';
 
 /**
  * ResetCommand aborts the current pipeline and cleans up state.
@@ -102,33 +95,4 @@ export class ResetCommand extends BaseCommand {
     }
   }
 
-  /**
-   * Prompts the user for confirmation.
-   *
-   * @param question - The question to ask
-   * @returns True if user confirmed (y/yes), false otherwise
-   */
-  private confirm(question: string): Promise<boolean> {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    return new Promise((resolve) => {
-      // Handle Ctrl+C
-      const sigintHandler = () => {
-        rl.close();
-        console.log(''); // Newline after ^C
-        resolve(false);
-      };
-      process.once('SIGINT', sigintHandler);
-
-      rl.question(question, (answer) => {
-        process.removeListener('SIGINT', sigintHandler);
-        rl.close();
-        const normalized = answer.trim().toLowerCase();
-        resolve(normalized === 'y' || normalized === 'yes');
-      });
-    });
-  }
 }

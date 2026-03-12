@@ -202,46 +202,4 @@ export class CreateIssueCommand extends BaseCommand {
    * @param question - The question to ask
    * @returns True if user confirmed (y/yes), false otherwise
    */
-  private confirm(question: string): Promise<boolean> {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-
-    let sigintHandler: (() => void) | null = null;
-
-    return new Promise((resolve, reject) => {
-      try {
-        // Handle Ctrl+C
-        sigintHandler = () => {
-          rl.close();
-          console.log('');
-          resolve(false);
-        };
-        process.once('SIGINT', sigintHandler);
-
-        rl.question(question, (answer) => {
-          if (sigintHandler) {
-            process.removeListener('SIGINT', sigintHandler);
-          }
-          rl.close();
-          const normalized = answer.trim().toLowerCase();
-          resolve(normalized === 'y' || normalized === 'yes');
-        });
-
-        // Handle errors
-        rl.on('error', (err) => {
-          if (sigintHandler) {
-            process.removeListener('SIGINT', sigintHandler);
-          }
-          reject(err);
-        });
-      } catch (err) {
-        if (sigintHandler) {
-          process.removeListener('SIGINT', sigintHandler);
-        }
-        reject(err);
-      }
-    });
-  }
 }

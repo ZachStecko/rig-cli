@@ -420,6 +420,23 @@ export class GitHubService {
   }
 
   /**
+   * Closes a pull request.
+   *
+   * @param prNumber - PR number to close
+   * @param comment - Optional comment to add when closing
+   * @throws Error if PR doesn't exist or close operation fails
+   */
+  async closePr(prNumber: number, comment?: string): Promise<void> {
+    // Close the PR first
+    await this.gh(`pr close ${prNumber}`);
+
+    // Add comment separately if provided (reuses existing safe method)
+    if (comment) {
+      await this.prComment(prNumber, comment);
+    }
+  }
+
+  /**
    * Validates a git branch name to prevent command injection.
    * Uses the same validation as GitService for consistency.
    *
