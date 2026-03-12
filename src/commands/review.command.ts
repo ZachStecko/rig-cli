@@ -213,9 +213,11 @@ export class ReviewCommand extends BaseCommand {
       ? path.join(this.projectRoot || process.cwd(), reviewFilePathMatch[1])
       : path.join(this.projectRoot || process.cwd(), `.rig-reviews/issue-${issueNumber}/review-latest.md`);
 
-    // Get max turns from config
+    // Get max turns, verbose, and permission mode from config
     const rigConfig = this.config.get();
     const maxTurns = rigConfig.agent.max_turns || 20;
+    const verbose = rigConfig.verbose || false;
+    const permissionMode = rigConfig.agent.permission_mode || 'default';
 
     // Get issue for component detection
     const issue = await this.github.viewIssue(issueNumber);
@@ -262,6 +264,8 @@ export class ReviewCommand extends BaseCommand {
         maxTurns,
         allowedTools: allowedToolsReview,
         logFile,
+        verbose,
+        permissionMode,
       });
 
       // Stream output to console
@@ -306,6 +310,8 @@ export class ReviewCommand extends BaseCommand {
               maxTurns: 10,
               allowedTools: allowedToolsFix,
               logFile: fixLogFile,
+              verbose,
+              permissionMode,
             });
 
             await this.streamProcess(fixChild);
