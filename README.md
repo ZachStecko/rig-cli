@@ -4,13 +4,21 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-rig-cli is an intelligent CLI tool that orchestrates your entire development workflow—from GitHub issue selection to pull request creation and code review—powered by Claude AI.
+An AI agent orchestration framework that automates your entire development workflow—from GitHub issue selection to pull request creation and code review—powered by Claude AI.
 
 ## Overview
 
-rig-cli automates the full software development lifecycle by managing a structured pipeline that takes you from issue selection through implementation, testing, demonstration, and code review. It's designed for teams working with GitHub issues and leverages AI agents to assist with code generation, testing, and review.
+rig-cli is an **AI agent orchestration system** that automates the full software development lifecycle. It coordinates multiple AI agents through a structured pipeline, managing agent execution, state transitions, and inter-agent communication to take you from issue selection through implementation, testing, demonstration, and code review. The framework orchestrates Claude AI agents to assist with code generation, testing, and review at each pipeline stage.
 
 ## Features
+
+### Agent Orchestration
+
+- **Multi-Agent Coordination**: Orchestrates specialized AI agents across the development lifecycle (implement, test, fix, review)
+- **State-Based Workflow**: Manages agent transitions through a structured state machine
+- **Context Passing**: Automatically assembles and passes relevant context between agents
+- **Agent Retry Logic**: Implements sophisticated retry mechanisms with context from previous agent failures
+- **Parallel Agent Execution**: Supports concurrent agent operations where appropriate
 
 ### Full Pipeline Automation
 
@@ -21,9 +29,9 @@ rig-cli automates the full software development lifecycle by managing a structur
 
 ### AI-Powered Development
 
-- Claude AI Integration: Uses Claude Code agent for implementation and fixes
+- Claude AI Integration: Uses Claude Code agents for implementation and fixes
 - Intelligent Code Review: Automated code review with interactive triage
-- Auto-fix on Test Failures: Automatically attempts to fix failing tests (up to 3 retries)
+- Auto-fix on Test Failures: Orchestrates fix agent on failures (up to 3 retries)
 - Context-Aware Prompts: Generates rich prompts with issue context, codebase info, and test results
 
 ### Smart Issue Management
@@ -235,6 +243,28 @@ Review Process:
 4. Auto-fix selected findings
 
 ### Utility Commands
+
+#### `rig create-issue`
+
+Create a new GitHub issue interactively with AI-powered structuring.
+
+```bash
+rig create-issue
+```
+
+Features:
+
+- **Multiline Input**: Describe your issue naturally in your own words
+- **AI Structuring**: Claude AI automatically formats your description into a proper GitHub issue with title and body
+- **Preview & Confirm**: Review the structured issue before creating
+- **No AI Fluff**: Configured to write like a senior developer—direct, technical, no excessive formatting
+
+Workflow:
+
+1. Describe the issue in multiline input (press Ctrl+D or type "EOF" when done)
+2. AI structures your description into a proper issue format
+3. Preview the generated title and body
+4. Confirm to create the issue on GitHub
 
 #### `rig queue`
 

@@ -83,7 +83,7 @@ describe('GitHubService', () => {
 
       expect(result).toBe('owner/repo');
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . repo view --json nameWithOwner --jq .nameWithOwner',
+        'gh repo view --json nameWithOwner --jq .nameWithOwner',
         { cwd: projectRoot }
       );
     });
@@ -277,7 +277,7 @@ describe('GitHubService', () => {
 
       expect(result).toEqual(mockIssue);
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . issue view 123 --json number,title,body,labels,assignees,state',
+        'gh issue view 123 --json number,title,body,labels,assignees,state',
         { cwd: projectRoot }
       );
     });
@@ -317,7 +317,7 @@ describe('GitHubService', () => {
 
       expect(result).toBe('This is the issue description');
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . issue view 123 --json body --jq .body',
+        'gh issue view 123 --json body --jq .body',
         { cwd: projectRoot }
       );
     });
@@ -335,7 +335,7 @@ describe('GitHubService', () => {
 
       expect(result).toBe('Fix authentication bug');
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . issue view 123 --json title --jq .title',
+        'gh issue view 123 --json title --jq .title',
         { cwd: projectRoot }
       );
     });
@@ -452,7 +452,7 @@ describe('GitHubService', () => {
 
       expect(result).toEqual(mockPrs);
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr list --head issue-123-fix-bug --json number,title',
+        'gh pr list --head issue-123-fix-bug --json number,title',
         { cwd: projectRoot }
       );
     });
@@ -525,7 +525,7 @@ describe('GitHubService', () => {
 
       expect(result).toBe('https://github.com/owner/repo/pull/10');
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('pr create --title "Fix bug" --body "This fixes the bug"'),
+        expect.stringContaining('pr create --title "Fix bug" --body-file'),
         { cwd: projectRoot }
       );
     });
@@ -586,25 +586,7 @@ describe('GitHubService', () => {
       );
     });
 
-    it('escapes double quotes in body', async () => {
-      mockExec.mockResolvedValue({
-        stdout: 'https://github.com/owner/repo/pull/10\n',
-        stderr: '',
-        exitCode: 0,
-      });
-
-      await githubService.createPr({
-        title: 'Fix bug',
-        body: 'This fixes the "critical" issue',
-      });
-
-      expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('--body "This fixes the \\"critical\\" issue"'),
-        { cwd: projectRoot }
-      );
-    });
-
-    it('prevents quote injection attack', async () => {
+    it('prevents quote injection attack in title', async () => {
       mockExec.mockResolvedValue({
         stdout: 'https://github.com/owner/repo/pull/10\n',
         stderr: '',
@@ -616,7 +598,7 @@ describe('GitHubService', () => {
         body: 'Body',
       });
 
-      // The quotes should be escaped, preventing command injection
+      // The quotes should be escaped in title, preventing command injection
       expect(mockExec).toHaveBeenCalledWith(
         expect.stringContaining('--title "Title\\"; rm -rf /"'),
         { cwd: projectRoot }
@@ -668,7 +650,7 @@ describe('GitHubService', () => {
       await githubService.editPr(10, { title: 'New title' });
 
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr edit 10 --title "New title"',
+        'gh pr edit 10 --title "New title"',
         { cwd: projectRoot }
       );
     });
@@ -683,7 +665,7 @@ describe('GitHubService', () => {
       await githubService.editPr(10, { body: 'New body' });
 
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr edit 10 --body "New body"',
+        expect.stringContaining('gh pr edit 10 --body-file'),
         { cwd: projectRoot }
       );
     });
@@ -701,7 +683,7 @@ describe('GitHubService', () => {
       });
 
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr edit 10 --title "New title" --body "New body"',
+        expect.stringContaining('gh pr edit 10 --title "New title" --body-file'),
         { cwd: projectRoot }
       );
     });
@@ -716,22 +698,7 @@ describe('GitHubService', () => {
       await githubService.editPr(10, { title: 'Fix "bug"' });
 
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr edit 10 --title "Fix \\"bug\\""',
-        { cwd: projectRoot }
-      );
-    });
-
-    it('escapes double quotes in body', async () => {
-      mockExec.mockResolvedValue({
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-      });
-
-      await githubService.editPr(10, { body: 'New "improved" body' });
-
-      expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr edit 10 --body "New \\"improved\\" body"',
+        'gh pr edit 10 --title "Fix \\"bug\\""',
         { cwd: projectRoot }
       );
     });
@@ -748,37 +715,7 @@ describe('GitHubService', () => {
       await githubService.prComment(10, 'This looks good!');
 
       expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr comment 10 --body "This looks good!"',
-        { cwd: projectRoot }
-      );
-    });
-
-    it('escapes double quotes in comment', async () => {
-      mockExec.mockResolvedValue({
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-      });
-
-      await githubService.prComment(10, 'The "bug" is fixed');
-
-      expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr comment 10 --body "The \\"bug\\" is fixed"',
-        { cwd: projectRoot }
-      );
-    });
-
-    it('prevents quote injection attack', async () => {
-      mockExec.mockResolvedValue({
-        stdout: '',
-        stderr: '',
-        exitCode: 0,
-      });
-
-      await githubService.prComment(10, 'Comment"; rm -rf /');
-
-      expect(mockExec).toHaveBeenCalledWith(
-        'gh -R . pr comment 10 --body "Comment\\"; rm -rf /"',
+        expect.stringContaining('gh pr comment 10 --body-file'),
         { cwd: projectRoot }
       );
     });
