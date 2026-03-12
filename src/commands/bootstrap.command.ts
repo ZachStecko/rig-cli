@@ -10,6 +10,7 @@ import * as path from 'path';
 import { promisify } from 'util';
 import { exec } from 'child_process';
 import * as readline from 'readline';
+import { stringify as stringifyYaml } from 'yaml';
 
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
@@ -767,18 +768,15 @@ export const handlers = [
         };
       }
 
-      // Save updated config
+      // Save updated config to .rig.yml
       const configPath = path.join(
         this.projectRoot || process.cwd(),
-        '.rig',
-        'config.json'
+        '.rig.yml'
       );
-      const configDir = path.dirname(configPath);
 
-      await mkdir(configDir, { recursive: true });
-      await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
+      await writeFile(configPath, stringifyYaml(config));
 
-      this.logger.dim('Saved component paths to .rig/config.json');
+      this.logger.dim('Saved component paths to .rig.yml');
     } catch (error) {
       this.logger.warn('Failed to save component paths to config');
     }

@@ -172,12 +172,21 @@ export class ShipCommand extends BaseCommand {
       throw new Error(`Unknown pipeline stage: ${startStage}`);
     }
 
+    // Get current state to check which stages are already completed
+    const currentState = await this.state.read();
+
     // Execute stages from startStage onwards
     for (let i = startIndex; i < stages.length; i++) {
       const stage = stages[i];
 
-      // Skip pick and branch stages if resuming (they're already done)
-      if (stage === 'pick' || stage === 'branch') {
+      // Skip 'pick' stage - it's always done by nextCommand before we get here
+      if (stage === 'pick') {
+        continue;
+      }
+
+      // Skip 'branch' stage if already completed (nextCommand creates the branch)
+      if (stage === 'branch' && currentState.stages.branch === 'completed') {
+        this.logger.dim(`Skipping branch stage (already completed)`);
         continue;
       }
 
@@ -196,6 +205,10 @@ export class ShipCommand extends BaseCommand {
     console.log('');
 
     switch (stage) {
+      case 'branch':
+        await this.executeBranchStage();
+        break;
+
       case 'implement':
         await this.implementCommand.execute();
         break;
@@ -218,6 +231,25 @@ export class ShipCommand extends BaseCommand {
 
       default:
         throw new Error(`Unknown stage: ${stage}`);
+    }
+  }
+
+  /**
+   * Executes the branch stage.
+   *
+   * Creates and checks out the feature branch from state.
+   */
+  private async executeBranchStage(): Promise<void> {
+    const state = await this.state.read();
+
+    this.logger.info(`Creating branch: ${state.branch}`);
+
+    try {
+      await this.git.createBranch(state.branch);
+      this.logger.success(`Created and checked out branch: ${state.branch}`);
+    } catch (error) {
+      this.logger.error(`Failed to create branch: ${(error as Error).message}`);
+      throw error;
     }
   }
 

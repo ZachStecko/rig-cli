@@ -508,6 +508,15 @@ export class TestRunnerService {
   async runAllTests(component: 'backend' | 'frontend' | 'devnet' | 'fullstack'): Promise<TestResult> {
     const results: TestResult[] = [];
 
+    // Ensure Docker is running if testing backend (may need testcontainers)
+    if (component === 'backend' || component === 'fullstack') {
+      const dockerReady = await this.ensureDockerRunning();
+      if (!dockerReady) {
+        this.logger.warn('Docker is not available. Backend tests may fail if they require containers.');
+        console.log('');
+      }
+    }
+
     if (component === 'devnet') {
       results.push(await this.runDevnetTests());
       results.push(await this.checkTestCoverage(component));
@@ -532,6 +541,99 @@ export class TestRunnerService {
     const output = results.map(r => r.output).filter(o => o.length > 0).join('\n\n');
 
     return { success, output };
+  }
+
+  /**
+   * Ensures Docker is running, starting it if necessary.
+   *
+   * Checks if Docker daemon is accessible. If not, attempts to start Docker Desktop
+   * on macOS and waits for it to be ready.
+   *
+   * @returns true if Docker is available, false otherwise
+   */
+  private async ensureDockerRunning(): Promise<boolean> {
+    // Check if Docker is already running
+    const checkResult = await exec('docker ps 2>&1');
+    if (checkResult.exitCode === 0) {
+      return true;
+    }
+
+    // Docker is not running - attempt to start it
+    this.logger.info('Docker is not running. Attempting to start Docker Desktop...');
+
+    const started = await this.startDockerDesktop();
+    if (!started) {
+      return false;
+    }
+
+    // Wait for Docker to be ready
+    this.logger.info('Waiting for Docker to be ready...');
+    const ready = await this.waitForDocker(60); // Wait up to 60 seconds
+
+    if (ready) {
+      this.logger.success('Docker is ready');
+      console.log('');
+    } else {
+      this.logger.error('Docker failed to start within 60 seconds');
+    }
+
+    return ready;
+  }
+
+  /**
+   * Starts Docker Desktop on macOS.
+   *
+   * @returns true if start command succeeded, false otherwise
+   */
+  private async startDockerDesktop(): Promise<boolean> {
+    // Check platform
+    const platform = process.platform;
+
+    if (platform === 'darwin') {
+      // macOS - use open command
+      const result = await exec('open -a Docker 2>&1');
+      return result.exitCode === 0;
+    } else if (platform === 'win32') {
+      // Windows - try to start Docker Desktop
+      const result = await exec('start "" "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe" 2>&1');
+      return result.exitCode === 0;
+    } else if (platform === 'linux') {
+      // Linux - try systemctl (most common)
+      const result = await exec('sudo systemctl start docker 2>&1');
+      if (result.exitCode === 0) {
+        return true;
+      }
+      // Try service command as fallback
+      const servicResult = await exec('sudo service docker start 2>&1');
+      return servicResult.exitCode === 0;
+    }
+
+    return false;
+  }
+
+  /**
+   * Waits for Docker daemon to be ready.
+   *
+   * Polls `docker ps` command until it succeeds or timeout is reached.
+   *
+   * @param timeoutSeconds - Maximum seconds to wait
+   * @returns true if Docker became ready, false if timeout
+   */
+  private async waitForDocker(timeoutSeconds: number): Promise<boolean> {
+    const startTime = Date.now();
+    const timeoutMs = timeoutSeconds * 1000;
+
+    while (Date.now() - startTime < timeoutMs) {
+      const result = await exec('docker ps 2>&1');
+      if (result.exitCode === 0) {
+        return true;
+      }
+
+      // Wait 2 seconds before next check
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+
+    return false;
   }
 
   /**

@@ -98,6 +98,29 @@ export class NextCommand extends BaseCommand {
     await this.state.write(initialState);
 
     this.logger.info(`Branch name: ${branchName}`);
+
+    // Create and checkout the feature branch
+    try {
+      await this.git.createBranch(branchName);
+      this.logger.success(`Created and checked out branch: ${branchName}`);
+
+      // Update state to mark branch stage as completed
+      await this.state.write({
+        ...initialState,
+        stage: 'branch' as const,
+        stages: {
+          ...initialState.stages,
+          branch: 'completed' as const,
+        },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to create branch: ${(error as Error).message}`);
+      // Clean up state on failure
+      await this.state.delete();
+      process.exit(1);
+      return; // For testing
+    }
+
     this.logger.info("State saved. Ready to begin implementation.");
   }
 }
