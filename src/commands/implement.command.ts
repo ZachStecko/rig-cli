@@ -145,9 +145,10 @@ export class ImplementCommand extends BaseCommand {
     const component = this.promptBuilder.detectComponent(labels);
     const allowedTools = this.promptBuilder.buildAllowedTools(component);
 
-    // Get max turns from config
+    // Get max turns and verbose from config
     const rigConfig = this.config.get();
     const maxTurns = rigConfig.agent.max_turns || 20;
+    const verbose = rigConfig.verbose || false;
 
     // Prepare log file
     const logFile = path.join(
@@ -168,6 +169,7 @@ export class ImplementCommand extends BaseCommand {
       this.logger.info('Configuration:');
       this.logger.info(`  Max turns: ${maxTurns}`);
       this.logger.info(`  Allowed tools: ${allowedTools}`);
+      this.logger.info(`  Verbose: ${verbose}`);
       this.logger.info(`  Log file: ${logFile}`);
       console.log('');
       this.logger.success('Dry-run complete. Use without --dry-run to execute.');
@@ -184,6 +186,7 @@ export class ImplementCommand extends BaseCommand {
         maxTurns,
         allowedTools,
         logFile,
+        verbose,
       });
 
       // Stream output to console
@@ -223,22 +226,78 @@ export class ImplementCommand extends BaseCommand {
   /**
    * Streams process output to console.
    *
+   * Parses stream-json output and formats it for human readability.
+   * Filters out verbose tool call JSON and shows clean progress messages.
+   *
    * @param child - Child process to stream
    */
   private async streamProcess(child: ChildProcess): Promise<void> {
     return new Promise((resolve, reject) => {
-      // Stream stdout
+      let buffer = '';
+
+      // Stream stdout with JSON parsing
       child.stdout?.on('data', (data: Buffer) => {
-        process.stdout.write(data);
+        buffer += data.toString();
+        const lines = buffer.split('\n');
+
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
+
+        // Process complete lines
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          try {
+            // Try to parse as JSON (stream-json format)
+            const parsed = JSON.parse(line);
+
+            // Format based on the type of message
+            if (parsed.type === 'tool_use') {
+              // Show tool usage in a clean format
+              const toolName = parsed.name || parsed.tool || 'unknown';
+              this.formatToolUse(toolName, parsed.input);
+            } else if (parsed.type === 'text' || parsed.text) {
+              // Show text output
+              const text = parsed.text || parsed.content || '';
+              if (text.trim()) {
+                process.stdout.write(text);
+              }
+            } else if (parsed.type === 'error') {
+              // Show errors in red
+              this.logger.error(parsed.message || JSON.stringify(parsed));
+            } else {
+              // Unknown JSON format - only show if it looks important
+              if (parsed.type !== 'thinking' && parsed.type !== 'debug') {
+                process.stdout.write(line + '\n');
+              }
+            }
+          } catch (e) {
+            // Not JSON, treat as regular output
+            process.stdout.write(line + '\n');
+          }
+        }
       });
 
-      // Stream stderr
+      // Stream stderr as-is
       child.stderr?.on('data', (data: Buffer) => {
         process.stderr.write(data);
       });
 
       // Handle process completion
       child.on('close', (code) => {
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer);
+            if (parsed.type === 'text' || parsed.text) {
+              const text = parsed.text || parsed.content || '';
+              if (text.trim()) process.stdout.write(text);
+            }
+          } catch (e) {
+            process.stdout.write(buffer);
+          }
+        }
+
         if (code === 0) {
           resolve();
         } else {
@@ -251,5 +310,40 @@ export class ImplementCommand extends BaseCommand {
         reject(error);
       });
     });
+  }
+
+  /**
+   * Formats tool usage messages in a human-readable way.
+   *
+   * @param toolName - Name of the tool being used
+   * @param input - Tool input parameters
+   */
+  private formatToolUse(toolName: string, input: any): void {
+    switch (toolName) {
+      case 'Read':
+        this.logger.dim(`  Reading: ${input.file_path || 'file'}`);
+        break;
+      case 'Write':
+        this.logger.dim(`  Writing: ${input.file_path || 'file'}`);
+        break;
+      case 'Edit':
+        this.logger.dim(`  Editing: ${input.file_path || 'file'}`);
+        break;
+      case 'Bash':
+        const cmd = input.command || input.cmd || 'command';
+        // Truncate long commands
+        const displayCmd = cmd.length > 60 ? cmd.substring(0, 60) + '...' : cmd;
+        this.logger.dim(`  Running: ${displayCmd}`);
+        break;
+      case 'Glob':
+        this.logger.dim(`  Searching files: ${input.pattern || '*'}`);
+        break;
+      case 'Grep':
+        this.logger.dim(`  Searching code: "${input.pattern || ''}"`);
+        break;
+      default:
+        // For unknown tools, show minimal info
+        this.logger.dim(`  Using tool: ${toolName}`);
+    }
   }
 }

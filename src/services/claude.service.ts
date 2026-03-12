@@ -13,6 +13,8 @@ export interface ClaudeRunOptions {
   allowedTools: string;
   /** Path to write verbose log output */
   logFile: string;
+  /** Enable verbose output (default: false) */
+  verbose?: boolean;
 }
 
 /**
@@ -35,7 +37,7 @@ export class ClaudeService {
   /**
    * Runs a Claude agent session with the specified options.
    *
-   * Spawns: claude -p "prompt" --max-turns N --allowedTools "tools" --verbose --output-format stream-json
+   * Spawns: claude -p "prompt" --max-turns N --allowedTools "tools" [--verbose] --output-format stream-json
    *
    * The process runs asynchronously and streams output.
    * Verbose logs are written to the specified log file.
@@ -51,10 +53,14 @@ export class ClaudeService {
       String(options.maxTurns),
       '--allowedTools',
       options.allowedTools,
-      '--verbose',
-      '--output-format',
-      'stream-json',
     ];
+
+    // Only add --verbose if explicitly enabled
+    if (options.verbose) {
+      args.push('--verbose');
+    }
+
+    args.push('--output-format', 'stream-json');
 
     // Spawn claude process
     const child = spawn('claude', args, {
