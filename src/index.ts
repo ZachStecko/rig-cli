@@ -56,6 +56,7 @@ program
   .command('status')
   .description('Display current pipeline status')
   .action(async () => {
+    await config.load();
     const statusCommand = new StatusCommand(logger, config, state, git, github, guard, projectRoot);
     await statusCommand.execute();
   });
@@ -67,6 +68,7 @@ program
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
   .action(async (options) => {
+    await config.load();
     const queueCommand = new QueueCommand(logger, config, state, git, github, guard, projectRoot);
     await queueCommand.execute(options);
   });
@@ -78,6 +80,7 @@ program
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
   .action(async (options) => {
+    await config.load();
     const nextCommand = new NextCommand(logger, config, state, git, github, guard, projectRoot);
     await nextCommand.execute(options);
   });
@@ -87,6 +90,7 @@ program
   .command('reset')
   .description('Abort current pipeline and clean up state')
   .action(async () => {
+    await config.load();
     const resetCommand = new ResetCommand(logger, config, state, git, github, guard, projectRoot);
     await resetCommand.execute();
   });
@@ -98,6 +102,7 @@ program
   .option('--issue <number>', 'Implement a specific issue number')
   .option('--dry-run', 'Show what would be done without executing')
   .action(async (options) => {
+    await config.load();
     const implementCommand = new ImplementCommand(logger, config, state, git, github, guard, projectRoot);
     await implementCommand.execute(options);
   });
@@ -108,6 +113,7 @@ program
   .description('Run tests for the current implementation')
   .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack)')
   .action(async (options) => {
+    await config.load();
     const testCommand = new TestCommand(logger, config, state, git, github, guard, projectRoot);
     await testCommand.execute(options);
   });
@@ -119,6 +125,7 @@ program
   .option('--issue <number>', 'Record demo for a specific issue number')
   .option('--component <name>', 'Component to demo (backend, frontend, devnet, fullstack)')
   .action(async (options) => {
+    await config.load();
     const demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
     await demoCommand.execute(options);
   });
@@ -128,6 +135,7 @@ program
   .command('pr')
   .description('Create or update pull request for the current issue')
   .action(async () => {
+    await config.load();
     const prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
     await prCommand.execute();
   });
@@ -140,6 +148,7 @@ program
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
   .action(async (options) => {
+    await config.load();
     const shipCommand = new ShipCommand(logger, config, state, git, github, guard, projectRoot);
     await shipCommand.execute(options);
   });
@@ -152,6 +161,7 @@ program
   .option('--pr <number>', 'Review a specific PR number')
   .option('--dry-run', 'Show what would be done without executing')
   .action(async (options) => {
+    await config.load();
     const reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
     await reviewCommand.execute(options);
   });
@@ -162,6 +172,7 @@ program
   .description('Set up test infrastructure (vitest, testing-library, msw)')
   .option('--component <name>', 'Component to bootstrap (frontend, backend, infra, serverless, all)')
   .action(async (options) => {
+    await config.load();
     const bootstrapCommand = new BootstrapCommand(logger, config, state, git, github, guard, projectRoot);
     await bootstrapCommand.execute(options);
   });
@@ -171,6 +182,7 @@ program
   .command('create-issue')
   .description('Create a new GitHub issue interactively')
   .action(async () => {
+    await config.load();
     const createIssueCommand = new CreateIssueCommand(logger, config, state, git, github, guard, projectRoot);
     await createIssueCommand.execute();
   });
