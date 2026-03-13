@@ -106,4 +106,65 @@ export abstract class BaseCommand {
       });
     });
   }
+
+  /**
+   * Prompts for multiline input.
+   * Reads until Ctrl+D (EOF) or a line containing only "EOF".
+   *
+   * @returns The multiline input as a single string
+   * @protected
+   */
+  protected promptMultiline(): Promise<string> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+      terminal: true,
+    });
+
+    const lines: string[] = [];
+    let sigintHandler: (() => void) | null = null;
+
+    return new Promise((resolve, reject) => {
+      try {
+        // Handle Ctrl+C
+        sigintHandler = () => {
+          rl.close();
+          console.log('');
+          resolve('');
+        };
+        process.once('SIGINT', sigintHandler);
+
+        // Handle line-by-line input
+        rl.on('line', (line) => {
+          // Check for EOF marker
+          if (line.trim() === 'EOF') {
+            rl.close();
+            return;
+          }
+          lines.push(line);
+        });
+
+        // Handle end of input (Ctrl+D)
+        rl.on('close', () => {
+          if (sigintHandler) {
+            process.removeListener('SIGINT', sigintHandler);
+          }
+          resolve(lines.join('\n'));
+        });
+
+        // Handle errors
+        rl.on('error', (err) => {
+          if (sigintHandler) {
+            process.removeListener('SIGINT', sigintHandler);
+          }
+          reject(err);
+        });
+      } catch (err) {
+        if (sigintHandler) {
+          process.removeListener('SIGINT', sigintHandler);
+        }
+        reject(err);
+      }
+    });
+  }
 }

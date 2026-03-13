@@ -379,16 +379,27 @@ export class GitHubService {
    *
    * @param prNumber - PR number
    * @param comment - Comment text
+   * @returns The ID of the created comment
    * @throws Error if PR doesn't exist or comment fails
    */
-  async prComment(prNumber: number, comment: string): Promise<void> {
+  async prComment(prNumber: number, comment: string): Promise<number> {
+    // Use GitHub API to post comment directly and get the ID back
+    const repoName = await this.repoName();
+    const [owner, repo] = repoName.split('/');
+
     // Use temporary file to avoid shell injection
     const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
     const commentFile = join(tmpDir, 'comment.txt');
 
     try {
       await writeFile(commentFile, comment, 'utf-8');
-      await this.gh(`pr comment ${prNumber} --body-file "${commentFile}"`);
+
+      // Use gh api with proper @ syntax (no quotes around filename)
+      const result = await this.gh(
+        `api repos/${owner}/${repo}/issues/${prNumber}/comments -F body=@${commentFile} --jq .id`
+      );
+
+      return parseInt(result.stdout.trim(), 10);
     } finally {
       try {
         await unlink(commentFile).catch(() => {});
@@ -434,6 +445,46 @@ export class GitHubService {
     if (comment) {
       await this.prComment(prNumber, comment);
     }
+  }
+
+  /**
+   * Auto-detects PR number from current branch.
+   *
+   * @param branchName - Branch name to check for associated PR
+   * @returns PR number if found, null otherwise
+   * @throws Error if gh command fails
+   */
+  async detectPrFromBranch(branchName: string): Promise<number | null> {
+    this.validateBranchName(branchName);
+    const prs = await this.prListByHead(branchName);
+
+    if (prs.length === 0) {
+      return null;
+    }
+
+    // Return first (most recent) PR for this branch
+    return prs[0].number;
+  }
+
+  /**
+   * Adds a comment to a pull request mentioning a previous comment.
+   *
+   * @param prNumber - PR number
+   * @param comment - Comment text
+   * @param inReplyTo - Optional comment ID to reference in the reply
+   * @returns The ID of the created comment
+   * @throws Error if PR doesn't exist or comment fails
+   */
+  async prCommentWithReference(prNumber: number, comment: string, inReplyTo?: number): Promise<number> {
+    let finalComment = comment;
+
+    // If replying to a specific comment, add a reference
+    if (inReplyTo) {
+      const repoName = await this.repoName();
+      finalComment = `> _In response to [comment](https://github.com/${repoName}/pull/${prNumber}#issuecomment-${inReplyTo})_\n\n${comment}`;
+    }
+
+    return this.prComment(prNumber, finalComment);
   }
 
   /**

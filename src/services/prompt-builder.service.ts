@@ -193,6 +193,53 @@ When fixed, all tests should pass and the build should succeed.
   }
 
   /**
+   * Assembles a prompt for addressing PR feedback from a user.
+   *
+   * @param userFeedback - User's feedback/comments on the PR
+   * @param prNumber - PR number being addressed
+   * @returns Rendered fix prompt
+   */
+  async assemblePrFixPrompt(userFeedback: string, prNumber: number): Promise<string> {
+    // Fetch PR data for context
+    const prData = await this.github.viewPr(prNumber);
+
+    const prompt = `# Address PR Feedback
+
+You are working on PR #${prNumber}: ${prData.title}
+
+The user has reviewed the PR and provided the following feedback:
+
+\`\`\`
+${userFeedback}
+\`\`\`
+
+## Your Task
+
+Address all the feedback provided by the user:
+
+1. **Understand the feedback** - Read through all the user's concerns and requests
+2. **Locate the relevant code** - Find the files and sections that need changes
+3. **Make the requested changes** - Implement the fixes, improvements, or adjustments
+4. **Test your changes** - Ensure everything works correctly
+5. **Commit your work** - Create clear, descriptive commits for your changes
+
+## Guidelines
+
+- Address every point raised in the feedback
+- If feedback is ambiguous, make reasonable assumptions and document them in commit messages
+- Maintain code quality and consistency with the existing codebase
+- Don't make unrelated changes beyond what was requested
+- Test thoroughly to ensure you haven't broken anything
+
+## Completion
+
+When done, all requested changes should be implemented and the PR should be ready for the user to review again.
+`;
+
+    return prompt;
+  }
+
+  /**
    * Assembles a code review prompt.
    *
    * Fetches issue data, calculates review size and lenses, and renders review template.

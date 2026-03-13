@@ -10,6 +10,8 @@ import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
 import { ClaudeService } from '../services/claude.service.js';
+import { exec } from '../utils/shell.js';
+import { ChildProcess } from 'child_process';
 
 /**
  * PrCommand creates or updates a pull request for the implemented issue.
@@ -20,6 +22,7 @@ import { ClaudeService } from '../services/claude.service.js';
 export class PrCommand extends BaseCommand {
   private prTemplate: PrTemplateService;
   private promptBuilder: PromptBuilderService;
+  private claude: ClaudeService;
 
   /**
    * Creates a new PrCommand instance.
@@ -41,13 +44,13 @@ export class PrCommand extends BaseCommand {
       this.config,
       this.logger
     );
-    const claude = new ClaudeService();
+    this.claude = new ClaudeService();
     this.prTemplate = new PrTemplateService(
       this.github,
       this.git,
       templateEngine,
       testRunner,
-      claude,
+      this.claude,
       this.projectRoot || process.cwd()
     );
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
@@ -61,8 +64,14 @@ export class PrCommand extends BaseCommand {
    *
    * @param options - Command options
    * @param options.issue - Optional issue number to create PR for (overrides state)
+   * @param options.comment - If true, opens interactive prompt for PR feedback
+   * @param options.pr - Optional PR number to comment on (auto-detects if not provided)
    */
-  async execute(options?: { issue?: string }): Promise<void> {
+  async execute(options?: { issue?: string; comment?: boolean; pr?: string }): Promise<void> {
+    // If -c flag is present, handle PR feedback workflow
+    if (options?.comment) {
+      return this.handlePrFeedback(options.pr);
+    }
     // Check GitHub authentication
     await this.guard.requireGhAuth();
 
@@ -218,6 +227,307 @@ export class PrCommand extends BaseCommand {
       this.logger.dim("Fix the issues and run 'rig pr' again.");
       process.exit(1);
       return; // For testing
+    }
+  }
+
+  /**
+   * Handles PR feedback workflow: prompts for user comments, posts to GitHub,
+   * runs agent to fix issues, and posts reply.
+   *
+   * @param prNumberOption - Optional PR number (auto-detects if not provided)
+   */
+  private async handlePrFeedback(prNumberOption?: string): Promise<void> {
+    // Check GitHub authentication
+    await this.guard.requireGhAuth();
+
+    this.logger.header('PR Feedback & Fix');
+    console.log('');
+
+    // Determine PR number
+    let prNumber: number;
+
+    if (prNumberOption) {
+      // Use explicit PR number
+      prNumber = parseInt(prNumberOption, 10);
+      if (isNaN(prNumber)) {
+        this.logger.error(`Invalid PR number: ${prNumberOption}`);
+        process.exit(1);
+        return;
+      }
+      this.logger.info(`Using PR #${prNumber}`);
+    } else {
+      // Auto-detect from current branch
+      const currentBranch = await this.git.currentBranch();
+      this.logger.info(`Detecting PR from branch: ${currentBranch}`);
+
+      const detectedPr = await this.github.detectPrFromBranch(currentBranch);
+      if (!detectedPr) {
+        this.logger.error(`No PR found for branch: ${currentBranch}`);
+        this.logger.dim('Use --pr <number> to specify a PR explicitly.');
+        process.exit(1);
+        return;
+      }
+
+      prNumber = detectedPr;
+      this.logger.info(`Found PR #${prNumber}`);
+    }
+
+    // Fetch PR details
+    const prData = await this.github.viewPr(prNumber);
+    console.log('');
+    this.logger.info(`PR: ${prData.title}`);
+    this.logger.info(`Branch: ${prData.headRefName}`);
+    console.log('');
+
+    // Checkout the PR branch if not already on it
+    const currentBranch = await this.git.currentBranch();
+    if (currentBranch !== prData.headRefName) {
+      this.logger.info(`Checking out branch: ${prData.headRefName}`);
+
+      // Validate branch name before checkout (defense in depth)
+      const validBranchPattern = /^[a-zA-Z0-9/_.-]+$/;
+      if (!validBranchPattern.test(prData.headRefName) || prData.headRefName.startsWith('-')) {
+        this.logger.error(`Invalid branch name: ${prData.headRefName}`);
+        process.exit(1);
+        return;
+      }
+
+      const result = await exec(`git checkout ${prData.headRefName}`, { cwd: this.projectRoot });
+      if (result.exitCode !== 0) {
+        this.logger.error(`Failed to checkout branch: ${result.stderr}`);
+        process.exit(1);
+        return;
+      }
+      console.log('');
+    }
+
+    // Prompt for user feedback
+    this.logger.info('Describe the issues to fix (multiline input):');
+    this.logger.dim('  Press Ctrl+D when done, or type "EOF" alone on a line');
+    console.log('');
+
+    const userFeedback = await this.promptMultiline();
+
+    if (!userFeedback.trim()) {
+      this.logger.warn('No feedback provided. Aborting.');
+      return;
+    }
+
+    console.log('');
+    this.logger.info('Feedback received. Processing...');
+    console.log('');
+
+    // Post feedback as GitHub comment and get the comment ID
+    this.logger.step(1, 4, 'Posting feedback to GitHub PR...');
+    const userCommentId = await this.github.prComment(prNumber, userFeedback);
+    console.log('');
+
+    // Build prompt for agent
+    this.logger.step(2, 4, 'Preparing fix prompt for agent...');
+    const fixPrompt = await this.promptBuilder.assemblePrFixPrompt(userFeedback, prNumber);
+    console.log('');
+
+    // Run Claude agent
+    this.logger.step(3, 4, 'Running Claude agent to address feedback...');
+
+    // Get config for permission mode
+    const configData = this.config.get();
+    const permissionMode = configData.agent?.permission_mode || 'default';
+    const maxTurns = configData.agent?.max_turns || 80;
+    const verbose = configData.verbose || false;
+
+    // Create log file path
+    const logFile = `${this.projectRoot}/.rig-logs/pr-feedback-${prNumber}.log`;
+
+    try {
+      const child = await this.claude.run({
+        prompt: fixPrompt,
+        maxTurns,
+        allowedTools: 'all',
+        logFile,
+        verbose,
+        permissionMode,
+      });
+
+      // Stream the process output
+      await this.streamProcess(child);
+    } catch (error) {
+      this.logger.error(`Agent failed: ${(error as Error).message}`);
+      process.exit(1);
+      return;
+    }
+
+    console.log('');
+
+    // Push changes
+    this.logger.step(4, 4, 'Pushing changes to remote...');
+    await this.git.push();
+    console.log('');
+
+    // Post reply comment on GitHub with fix summary (referencing the user's comment)
+    const replyMessage = `Addressed the feedback. Changes have been pushed to the PR.
+
+Summary of fixes:
+- Analyzed all feedback points
+- Made requested changes
+- Tested the implementation
+- Pushed updates
+
+Please review the changes.`;
+
+    await this.github.prCommentWithReference(prNumber, replyMessage, userCommentId);
+    this.logger.success('Posted update to GitHub PR');
+
+    console.log('');
+    this.logger.success('PR feedback addressed successfully');
+
+    // Get repository name and display PR URL
+    const repoName = await this.github.repoName();
+    console.log(`  https://github.com/${repoName}/pull/${prNumber}`);
+  }
+
+  /**
+   * Streams Claude Code process output with proper JSON parsing.
+   *
+   * @param child - ChildProcess to stream
+   */
+  private async streamProcess(child: ChildProcess): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let buffer = '';
+
+      // Stream stdout with JSON parsing
+      child.stdout?.on('data', (data: Buffer) => {
+        buffer += data.toString();
+        const lines = buffer.split('\n');
+
+        // Keep the last incomplete line in the buffer
+        buffer = lines.pop() || '';
+
+        // Process complete lines
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          try {
+            // Try to parse as JSON (stream-json format)
+            const parsed = JSON.parse(line);
+
+            // Handle assistant messages with tool uses
+            if (parsed.type === 'assistant' && parsed.message?.content) {
+              for (const item of parsed.message.content) {
+                if (item.type === 'tool_use') {
+                  this.formatToolUse(item.name, item.input);
+                } else if (item.type === 'text' && item.text) {
+                  process.stdout.write(item.text);
+                }
+              }
+            }
+            // Handle user messages (errors, results)
+            else if (parsed.type === 'user' && parsed.message?.content) {
+              for (const item of parsed.message.content) {
+                if (item.type === 'tool_result' && item.is_error) {
+                  // Warn about permission errors instead of silently ignoring them
+                  if (item.content?.includes('requested permissions')) {
+                    this.logger.warn('Permission required - operation skipped');
+                  } else {
+                    this.logger.error(item.content || 'Tool error');
+                  }
+                }
+              }
+            }
+            // Handle direct tool_use format (fallback)
+            else if (parsed.type === 'tool_use') {
+              const toolName = parsed.name || parsed.tool || 'unknown';
+              this.formatToolUse(toolName, parsed.input);
+            }
+            // Handle text messages
+            else if (parsed.type === 'text' || parsed.text) {
+              const text = parsed.text || parsed.content || '';
+              if (text.trim()) {
+                process.stdout.write(text);
+              }
+            }
+            // Handle errors
+            else if (parsed.type === 'error') {
+              this.logger.error(parsed.message || JSON.stringify(parsed));
+            }
+            // Skip thinking, debug, and other internal messages
+            else if (parsed.type !== 'thinking' && parsed.type !== 'debug' && parsed.type !== 'session') {
+              // Unknown format - show it in case it's important
+              process.stdout.write(line + '\n');
+            }
+          } catch (e) {
+            // Not JSON, treat as regular output
+            process.stdout.write(line + '\n');
+          }
+        }
+      });
+
+      // Stream stderr as-is
+      child.stderr?.on('data', (data: Buffer) => {
+        process.stderr.write(data);
+      });
+
+      // Handle process completion
+      child.on('close', (code) => {
+        // Process any remaining buffer
+        if (buffer.trim()) {
+          try {
+            const parsed = JSON.parse(buffer);
+            if (parsed.type === 'text' || parsed.text) {
+              const text = parsed.text || parsed.content || '';
+              if (text.trim()) process.stdout.write(text);
+            }
+          } catch (e) {
+            process.stdout.write(buffer);
+          }
+        }
+
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`Process exited with code ${code}`));
+        }
+      });
+
+      // Handle errors
+      child.on('error', (error) => {
+        reject(error);
+      });
+    });
+  }
+
+  /**
+   * Formats tool usage messages in a human-readable way.
+   *
+   * @param toolName - Name of the tool being used
+   * @param input - Tool input parameters
+   */
+  private formatToolUse(toolName: string, input: any): void {
+    switch (toolName) {
+      case 'Read':
+        this.logger.dim(`  Reading: ${input.file_path || 'file'}`);
+        break;
+      case 'Write':
+        this.logger.dim(`  Writing: ${input.file_path || 'file'}`);
+        break;
+      case 'Edit':
+        this.logger.dim(`  Editing: ${input.file_path || 'file'}`);
+        break;
+      case 'Bash':
+        const cmd = input.command || input.cmd || 'command';
+        // Truncate long commands
+        const displayCmd = cmd.length > 60 ? cmd.substring(0, 60) + '...' : cmd;
+        this.logger.dim(`  Running: ${displayCmd}`);
+        break;
+      case 'Glob':
+        this.logger.dim(`  Searching files: ${input.pattern || '*'}`);
+        break;
+      case 'Grep':
+        this.logger.dim(`  Searching code: "${input.pattern || ''}"`);
+        break;
+      default:
+        // For unknown tools, show minimal info
+        this.logger.dim(`  Using tool: ${toolName}`);
     }
   }
 }

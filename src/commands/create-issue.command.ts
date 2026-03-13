@@ -6,7 +6,6 @@ import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
 import { LLMService } from '../services/llm.service.js';
-import * as readline from 'readline';
 
 /**
  * CreateIssueCommand handles interactive issue creation with LLM-powered structuring.
@@ -105,66 +104,6 @@ export class CreateIssueCommand extends BaseCommand {
   }
 
   /**
-   * Prompts for multiline input.
-   * Reads until Ctrl+D (EOF) or a line containing only "EOF".
-   *
-   * @returns The multiline input as a single string
-   */
-  private promptMultiline(): Promise<string> {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-      terminal: true,
-    });
-
-    const lines: string[] = [];
-    let sigintHandler: (() => void) | null = null;
-
-    return new Promise((resolve, reject) => {
-      try {
-        // Handle Ctrl+C
-        sigintHandler = () => {
-          rl.close();
-          console.log('');
-          resolve('');
-        };
-        process.once('SIGINT', sigintHandler);
-
-        // Handle line-by-line input
-        rl.on('line', (line) => {
-          // Check for EOF marker
-          if (line.trim() === 'EOF') {
-            rl.close();
-            return;
-          }
-          lines.push(line);
-        });
-
-        // Handle end of input (Ctrl+D)
-        rl.on('close', () => {
-          if (sigintHandler) {
-            process.removeListener('SIGINT', sigintHandler);
-          }
-          resolve(lines.join('\n'));
-        });
-
-        // Handle errors
-        rl.on('error', (err) => {
-          if (sigintHandler) {
-            process.removeListener('SIGINT', sigintHandler);
-          }
-          reject(err);
-        });
-      } catch (err) {
-        if (sigintHandler) {
-          process.removeListener('SIGINT', sigintHandler);
-        }
-        reject(err);
-      }
-    });
-  }
-
-  /**
    * Displays a preview of the structured issue.
    *
    * @param title - Issue title
@@ -195,11 +134,4 @@ export class CreateIssueCommand extends BaseCommand {
       this.logger.dim(`  (${body.length} characters)`);
     }
   }
-
-  /**
-   * Prompts the user for confirmation.
-   *
-   * @param question - The question to ask
-   * @returns True if user confirmed (y/yes), false otherwise
-   */
 }

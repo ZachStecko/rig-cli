@@ -157,6 +157,8 @@ program
   .command('pr')
   .description('Create or update pull request for the current issue')
   .option('--issue <number>', 'Create PR for a specific issue number (bypasses state)')
+  .option('-c, --comment', 'Provide feedback on a PR with interactive prompt')
+  .option('--pr <number>', 'Specify PR number to comment on (auto-detects from branch if not provided)')
   .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
