@@ -37,6 +37,43 @@ export class ClaudeService {
   }
 
   /**
+   * Sends a simple prompt to Claude and returns the text response.
+   *
+   * Uses: claude -p "prompt" --output-format json
+   *
+   * @param prompt - The prompt to send to Claude
+   * @returns Promise that resolves with Claude's response text
+   * @throws Error if Claude CLI is not available or we're in a nested session
+   */
+  async prompt(prompt: string): Promise<string> {
+    // Check if we're in a nested Claude Code session
+    if (process.env.CLAUDECODE) {
+      throw new Error('Cannot call Claude CLI from within a Claude Code session (nested sessions not supported)');
+    }
+
+    const result = await exec(`claude -p ${JSON.stringify(prompt)} --output-format json`);
+
+    if (result.exitCode !== 0) {
+      throw new Error(`Claude prompt failed: ${result.stderr}`);
+    }
+
+    try {
+      const response = JSON.parse(result.stdout);
+      // Extract text from the response content
+      if (response.content && Array.isArray(response.content)) {
+        const textBlocks = response.content
+          .filter((block: any) => block.type === 'text')
+          .map((block: any) => block.text);
+        return textBlocks.join('\n');
+      }
+      return response.text || response.content || '';
+    } catch (error) {
+      // If JSON parsing fails, return raw stdout
+      return result.stdout.trim();
+    }
+  }
+
+  /**
    * Runs a Claude agent session with the specified options.
    *
    * Spawns: claude -p "prompt" --max-turns N --allowedTools "tools" [--verbose] --output-format stream-json

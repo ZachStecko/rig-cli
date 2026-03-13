@@ -9,6 +9,7 @@ import { PrTemplateService } from '../services/pr-template.service.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
+import { ClaudeService } from '../services/claude.service.js';
 
 /**
  * PrCommand creates or updates a pull request for the implemented issue.
@@ -40,11 +41,13 @@ export class PrCommand extends BaseCommand {
       this.config,
       this.logger
     );
+    const claude = new ClaudeService();
     this.prTemplate = new PrTemplateService(
       this.github,
       this.git,
       templateEngine,
       testRunner,
+      claude,
       this.projectRoot || process.cwd()
     );
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);

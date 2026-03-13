@@ -2,6 +2,7 @@ import { GitHubService } from './github.service.js';
 import { GitService } from './git.service.js';
 import { TemplateEngine } from './template-engine.service.js';
 import { TestRunnerService } from './test-runner.service.js';
+import { ClaudeService } from './claude.service.js';
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -22,6 +23,7 @@ export class PrTemplateService {
   private git: GitService;
   private templateEngine: TemplateEngine;
   private testRunner: TestRunnerService;
+  private claude: ClaudeService;
   private projectRoot: string;
 
   /**
@@ -31,6 +33,7 @@ export class PrTemplateService {
    * @param git - GitService for git operations
    * @param templateEngine - TemplateEngine for rendering templates
    * @param testRunner - TestRunnerService for test operations
+   * @param claude - ClaudeService for AI-powered test instruction generation
    * @param projectRoot - Absolute path to project root
    */
   constructor(
@@ -38,12 +41,14 @@ export class PrTemplateService {
     git: GitService,
     templateEngine: TemplateEngine,
     testRunner: TestRunnerService,
+    claude: ClaudeService,
     projectRoot: string
   ) {
     this.github = github;
     this.git = git;
     this.templateEngine = templateEngine;
     this.testRunner = testRunner;
+    this.claude = claude;
     this.projectRoot = projectRoot;
   }
 
@@ -78,27 +83,13 @@ export class PrTemplateService {
       .map(line => `- ${line}`)
       .join('\n');
 
-    // Get diff stats
-    const diffStat = await this.git.diffStatVsMaster();
-
-    // Build test instructions based on component
-    const testInstructions = this.buildTestInstructions(component);
-
-    // Get test output (simplified - just run summary)
-    const testOutput = await this.getTestOutput(component);
-
-    // List new test files
-    const newTestFiles = await this.testRunner.listNewTestFiles();
-    const newTests =
-      newTestFiles.length > 0
-        ? newTestFiles.map(f => `- ${f}`).join('\n')
-        : '_None_';
-
-    // Demo section
-    const demo = this.buildDemoSection(issueNumber);
-
-    // Manual test steps (simplified - just a placeholder for now)
-    const manualTestSteps = '_Manual testing steps should be added by the reviewer._';
+    // Generate AI-powered manual test steps
+    const manualTestSteps = await this.generateManualTestSteps(
+      issue.body || '',
+      issueSummary,
+      formattedCommitLog,
+      component
+    );
 
     // Load template
     const templatePath = resolve(__dirname, '../templates/pr-body.md');
@@ -110,12 +101,7 @@ export class PrTemplateService {
       issue_summary: issueSummary,
       issue_context: issueContext,
       commit_log: formattedCommitLog || '- No commits',
-      diff_stat: diffStat || 'No changes',
       manual_test_steps: manualTestSteps,
-      test_instructions: testInstructions,
-      test_output: testOutput,
-      new_tests: newTests,
-      demo: demo,
     };
 
     // Render template
@@ -123,7 +109,7 @@ export class PrTemplateService {
   }
 
   /**
-   * Extracts summary from issue body (first paragraph or first 5 lines).
+   * Extracts summary from issue body (looks for Summary section, then first paragraph).
    *
    * @private
    * @param body - Issue body text
@@ -135,7 +121,26 @@ export class PrTemplateService {
       return title;
     }
 
-    // Get first paragraph (up to first empty line)
+    // First, look for an explicit "Summary", "Description", or "Overview" section
+    const summaryMatch = body.match(
+      /(###?\s+(Summary|Description|Overview)[\s\S]*?)(?=\n###|$)/i
+    );
+
+    if (summaryMatch) {
+      // Extract content, remove heading, limit to reasonable length
+      const content = summaryMatch[1]
+        .replace(/###?\s+(Summary|Description|Overview)/i, '')
+        .trim()
+        .split('\n')
+        .slice(0, 10)
+        .join('\n');
+
+      if (content) {
+        return content;
+      }
+    }
+
+    // Fallback: Get first paragraph (up to first empty line)
     const firstParagraph = body.split('\n\n')[0];
     const lines = firstParagraph.split('\n').slice(0, 5);
 
@@ -175,6 +180,103 @@ export class PrTemplateService {
   }
 
   /**
+   * Generates manual testing instructions based on PR context.
+   *
+   * Analyzes the issue and commits to create specific testing steps.
+   *
+   * @private
+   * @param issueBody - Issue body text
+   * @param issueSummary - Issue summary
+   * @param commitLog - Formatted commit log
+   * @param component - Component type
+   * @returns Testing instructions
+   */
+  private async generateManualTestSteps(
+    issueBody: string,
+    issueSummary: string,
+    commitLog: string,
+    component: ComponentType
+  ): Promise<string> {
+    // Extract testing section from issue if it exists
+    const testingSectionMatch = issueBody.match(
+      /(###?\s+(Manual Testing|Testing Steps|How to Test|Testing)[\s\S]*?)(?=\n###|$)/i
+    );
+
+    if (testingSectionMatch) {
+      // Use testing instructions from issue body
+      const content = testingSectionMatch[1]
+        .replace(/###?\s+(Manual Testing|Testing Steps|How to Test|Testing)/i, '')
+        .trim();
+
+      if (content) {
+        return content;
+      }
+    }
+
+    // Generate context-aware instructions
+    const summary = issueSummary.toLowerCase();
+    const commits = commitLog.toLowerCase();
+    const body = issueBody.toLowerCase();
+    const combined = `${summary} ${commits} ${body}`;
+
+    const steps: string[] = [];
+
+    // Analyze what changed and generate specific steps
+    if (combined.includes('responsive') || combined.includes('viewport') || combined.includes('mobile')) {
+      steps.push('1. Test the page at different viewport widths (mobile: 375px, tablet: 768px, desktop: 1920px)');
+      steps.push('2. Verify the layout and images scale correctly at each breakpoint');
+    }
+
+    if (combined.includes('button') || combined.includes('click') || combined.includes('ui')) {
+      steps.push(`${steps.length + 1}. Test all interactive elements (buttons, forms, links) for functionality`);
+    }
+
+    if (combined.includes('api') || combined.includes('endpoint') || combined.includes('backend')) {
+      steps.push(`${steps.length + 1}. Test API endpoints using curl or Postman with valid and invalid inputs`);
+      steps.push(`${steps.length + 1}. Verify response status codes and error messages`);
+    }
+
+    if (combined.includes('css') || combined.includes('style') || combined.includes('design')) {
+      steps.push(`${steps.length + 1}. Verify styling matches the design requirements`);
+      steps.push(`${steps.length + 1}. Check for visual regressions in browser DevTools`);
+    }
+
+    if (combined.includes('error') || combined.includes('validation')) {
+      steps.push(`${steps.length + 1}. Test error handling and edge cases`);
+    }
+
+    // Add generic step if we have nothing specific
+    if (steps.length === 0) {
+      steps.push('1. Test the main user flow affected by this change');
+      steps.push('2. Verify the changes work as described in the issue');
+      steps.push('3. Check for any unintended side effects or regressions');
+    }
+
+    return steps.join('\n');
+  }
+
+  /**
+   * Gets fallback manual testing instructions when AI generation fails.
+   *
+   * @private
+   * @param component - Component type
+   * @returns Fallback testing instructions
+   */
+  private getFallbackTestInstructions(component: ComponentType): string {
+    switch (component) {
+      case 'backend':
+        return '1. Test API endpoints using curl or Postman\n2. Verify response formats and status codes\n3. Test error handling with invalid inputs\n4. Check database changes (if applicable)';
+      case 'frontend':
+        return '1. Test UI changes in the browser\n2. Verify responsive design on different screen sizes\n3. Test user interactions (clicks, forms, navigation)\n4. Check console for errors';
+      case 'devnet':
+        return '1. Deploy to local devnet\n2. Test smart contract interactions\n3. Verify transaction outcomes\n4. Check event emissions';
+      case 'fullstack':
+      default:
+        return '1. Test end-to-end user flows\n2. Verify frontend-backend integration\n3. Test error handling across the stack\n4. Check data consistency';
+    }
+  }
+
+  /**
    * Builds test instructions based on component type.
    *
    * @private
@@ -194,50 +296,8 @@ export class PrTemplateService {
 
       case 'fullstack':
       default:
-        return '```bash\n# Backend\ncd backend && go test ./... -v\n\n# Frontend\ncd frontend && npm test\ncd frontend && npm run lint\ncd frontend && npm run build\n```';
-    }
-  }
-
-  /**
-   * Gets test output summary (just last few lines).
-   *
-   * @private
-   * @param component - Component type
-   * @returns Test output summary
-   */
-  private async getTestOutput(component: ComponentType): Promise<string> {
-    try {
-      let result;
-
-      switch (component) {
-        case 'backend':
-          result = await this.testRunner.runBackendTests();
-          break;
-        case 'frontend':
-          result = await this.testRunner.runFrontendTests();
-          break;
-        case 'devnet':
-          result = await this.testRunner.runDevnetTests();
-          break;
-        case 'fullstack':
-          result = await this.testRunner.runAllTests('fullstack');
-          break;
-      }
-
-      if (result.skipped) {
-        return 'Tests not run (component directory not found)';
-      }
-
-      // Extract summary lines (filter first, then take last 10)
-      // Match specific test result patterns, not just any line containing these words
-      const lines = result.output.split('\n');
-      const summaryLines = lines
-        .filter(line => line.match(/(Test Files|Test Suites|\d+\s+(passed|failed|tests)|✓|✗|PASS|FAIL|^ok\s|^FAIL\s|^\?\s)/))
-        .slice(-10);
-
-      return summaryLines.join('\n') || result.output.split('\n').slice(-5).join('\n');
-    } catch {
-      return 'Tests not run';
+        // For fullstack/mixed changes, list both test suites separately
+        return '```bash\n# Backend tests\ncd backend && go test ./... -v\n\n# Frontend tests\ncd frontend && npm test\ncd frontend && npm run lint\ncd frontend && npm run build\n```';
     }
   }
 
