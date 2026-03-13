@@ -1,0 +1,39 @@
+# Backend-only project configuration
+# For: Go APIs, Node servers, Python services
+
+agent:
+  max_turns: 80
+  permission_mode: bypassPermissions
+
+queue:
+  default_component: backend
+  phase_priorities:
+    "v1.0": 3
+    "v1.1": 2
+    "v2.0": 1
+  label_priorities:
+    "critical": 5
+    "high": 4
+    "medium": 3
+    "low": 2
+    "enhancement": 1
+
+test:
+  require_new_tests: true
+
+pr:
+  draft: false
+  reviewers:
+    - backend-lead
+
+github:
+  repo: yourorg/api-service
+
+components:
+  backend:
+    path: .
+    test_command: go test ./... -v
+    lint_command: golangci-lint run
+    build_command: go build -o bin/server ./cmd/server
+
+verbose: false

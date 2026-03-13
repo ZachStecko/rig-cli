@@ -1,0 +1,51 @@
+# Enterprise team configuration
+# For: Large teams with strict controls and review processes
+
+agent:
+  max_turns: 60  # Limit agent autonomy
+  permission_mode: default  # Require approval for all operations
+
+queue:
+  default_phase: null
+  default_component: null
+  phase_priorities:
+    "Q1 2024": 4
+    "Q2 2024": 3
+    "Q3 2024": 2
+    "Q4 2024": 1
+  label_priorities:
+    "security": 10  # Security issues highest priority
+    "bug": 8
+    "P0": 5
+    "P1": 4
+    "P2": 3
+    "P3": 2
+    "P4": 1
+
+test:
+  require_new_tests: true  # Enforce test coverage
+
+pr:
+  draft: true  # Always create as draft for review
+  reviewers:
+    - architect
+    - security-team
+    - qa-lead
+
+github:
+  repo: enterprise/core-platform
+
+components:
+  frontend:
+    path: ./frontend
+    test_command: npm run test:coverage -- --coverage-threshold=80
+    lint_command: npm run lint -- --max-warnings=0
+    build_command: npm run build:production
+
+  backend:
+    path: ./backend
+    test_command: go test ./... -v -race -coverprofile=coverage.out
+    lint_command: golangci-lint run --config=.golangci.strict.yml
+    build_command: go build -tags=production ./...
+
+verbose: true  # Full logging for audit trail

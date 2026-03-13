@@ -1,0 +1,38 @@
+# Frontend-only project configuration
+# For: React, Vue, Angular, Svelte, etc.
+
+agent:
+  max_turns: 80
+  permission_mode: bypassPermissions
+
+queue:
+  default_component: frontend
+  phase_priorities:
+    "Phase 1: Core Features": 3
+    "Phase 2: Enhancements": 2
+    "Phase 3: Polish": 1
+  label_priorities:
+    "P0": 5
+    "P1": 4
+    "P2": 3
+    "P3": 2
+    "P4": 1
+
+test:
+  require_new_tests: true
+
+pr:
+  draft: false
+  reviewers: []
+
+github:
+  repo: yourorg/frontend-app
+
+components:
+  frontend:
+    path: .
+    test_command: npm test
+    lint_command: npm run lint
+    build_command: npm run build
+
+verbose: false

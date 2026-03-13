@@ -8,7 +8,14 @@ An AI agent orchestration framework that automates your entire development workf
 
 ## Overview
 
-rig-cli is an **AI agent orchestration system** that automates the full software development lifecycle. It coordinates multiple AI agents through a structured pipeline, managing agent execution, state transitions, and inter-agent communication to take you from issue selection through implementation, testing, demonstration, and code review. The framework orchestrates Claude AI agents to assist with code generation, testing, and review at each pipeline stage.
+rig-cli is an AI agent orchestration system that automates the software development lifecycle. It coordinates multiple AI agents through a structured pipeline, managing agent execution, state transitions, and inter-agent communication from issue selection through implementation, testing, and code review.
+
+The tool operates in two modes:
+
+1. **Pipeline mode**: Full automated workflow (`rig ship`)
+2. **Modular mode**: Run individual commands with `--issue` flags
+
+Each command (implement, test, pr, review) works standalone or as part of the pipeline.
 
 ## Features
 
@@ -25,7 +32,7 @@ rig-cli is an **AI agent orchestration system** that automates the full software
 - Issue-to-PR Pipeline: Automated workflow from issue selection to pull request creation
 - Resume Capability: Pick up where you left off if the pipeline is interrupted
 - State Management: Tracks pipeline progress across all stages
-- Multi-stage Workflow: Pick → Branch → Implement → Test → Demo → PR → Review
+- Multi-stage Workflow: Pick → Branch → Implement → Test → PR → Review
 
 ### AI-Powered Development
 
@@ -37,7 +44,7 @@ rig-cli is an **AI agent orchestration system** that automates the full software
 ### Smart Issue Management
 
 - Priority Queue System: Automatically prioritizes issues based on phase and label priorities
-- Component Filtering: Filter by component (backend, frontend, fullstack, devnet)
+- Component Filtering: Filter by component (backend, frontend, fullstack, devnet, serverless, infra)
 - Phase Filtering: Focus on specific project phases (e.g., "Phase 1: MVP")
 - Open PR Detection: Skips issues that already have open pull requests
 
@@ -48,11 +55,6 @@ rig-cli is an **AI agent orchestration system** that automates the full software
 - Test Retry Logic: Runs fix agent and retries on test failures
 - Coverage Reporting: Displays test coverage information
 
-### Demo Recording
-
-- Automated Demos: Records demonstrations of implemented features
-- Logger Integration: Captures structured logs during demo runs
-- Component-Specific: Tailored demo scripts for frontend, backend, and fullstack
 
 ### Code Review
 
@@ -133,9 +135,36 @@ This orchestrates the complete workflow:
 2. Branch: Create feature branch
 3. Implement: Run implementation agent
 4. Test: Run tests (with auto-retry on failures)
-5. Demo: Record demonstration
-6. PR: Create pull request
-7. Review: Run code review agent
+5. PR: Create pull request
+6. Review: Run code review agent
+
+## Documentation
+
+For comprehensive guides beyond this README:
+
+- **[Workflows](docs/workflows.md)** - Detailed workflow diagrams and usage patterns
+  - Full pipeline flow
+  - Modular command usage with `--issue` flags
+  - Error recovery procedures
+  - Multi-component project handling
+
+- **[Configuration](docs/configuration.md)** - Complete configuration reference
+  - All available options with defaults
+  - Permission modes explained
+  - Component-specific settings
+  - Example configs for different project types
+
+- **[Architecture](docs/architecture.md)** - Technical deep dive
+  - Service architecture and dependencies
+  - State management implementation
+  - Agent orchestration patterns
+  - API call optimization strategies
+
+- **[Examples](docs/examples/)** - Ready-to-use configuration files
+  - Frontend-only projects
+  - Backend-only projects
+  - Fullstack monorepos
+  - Enterprise team workflows
 
 ## Commands
 
@@ -190,7 +219,9 @@ Runs the test suite for your project.
 
 ```bash
 rig test                           # Run tests for current pipeline
+rig test --issue 42                # Run tests for specific issue (no pipeline needed)
 rig test --component backend       # Run backend tests only
+rig test --issue 42 --component backend  # Combine flags
 ```
 
 Supported Test Runners:
@@ -199,30 +230,23 @@ Supported Test Runners:
 - Backend: `go test ./...`
 - Fullstack: Both frontend and backend tests
 
-#### `rig demo`
-
-Records a demonstration of the implemented feature.
-
-```bash
-rig demo                           # Demo current pipeline
-rig demo --issue 42                # Demo specific issue
-rig demo --component frontend      # Demo frontend only
-```
-
 #### `rig pr`
 
 Creates a pull request for the current branch.
 
 ```bash
-rig pr                             # Create PR from current state
+rig pr                             # Create PR from current pipeline state
+rig pr --issue 42                  # Create PR for specific issue (no pipeline needed)
 ```
 
 Features:
 
-- Auto-generates title and description
+- Auto-generates title and description from issue
 - Links to original issue
-- Includes implementation summary
-- Adds test plan checklist
+- Includes implementation summary and commit history
+- Adds AI-generated test plan checklist
+- Auto-detects component from issue labels
+- Can create or update existing PRs
 
 #### `rig review`
 
@@ -361,45 +385,83 @@ Backend Setup:
 
 ## Configuration
 
-### `.rig/config.json`
+### `.rig.yml`
 
-Create a configuration file in your project root:
+Create a configuration file in your project root using YAML format:
 
-```json
-{
-  "agent": {
-    "max_turns": 20
-  },
-  "queue": {
-    "phase_priorities": {
-      "Phase 1: MVP": 3,
-      "Phase 2: Enhancement": 2,
-      "Phase 3: Polish": 1
-    },
-    "label_priorities": {
-      "P0": 5,
-      "P1": 4,
-      "P2": 3,
-      "P3": 2,
-      "P4": 1
-    }
-  },
-  "github": {
-    "repo": "owner/repo"
-  },
-  "components": {
-    "frontend": {
-      "path": "./frontend",
-      "test_command": "npm test"
-    },
-    "backend": {
-      "path": "./backend",
-      "test_command": "go test ./..."
-    }
-  },
-  "verbose": false
-}
+```yaml
+# Agent configuration
+agent:
+  max_turns: 80  # Maximum turns for Claude Code agent (default: 80)
+  permission_mode: bypassPermissions  # default, bypassPermissions, acceptEdits, dontAsk, plan, auto
+
+# Queue and prioritization
+queue:
+  default_phase: null  # Default phase filter (null = no filter)
+  default_component: null  # Default component filter (null = no filter)
+  phase_priorities:
+    "Phase 1: MVP": 3
+    "Phase 2: Enhancement": 2
+    "Phase 3: Polish": 1
+  label_priorities:
+    "P0": 5
+    "P1": 4
+    "P2": 3
+    "P3": 2
+    "P4": 1
+
+# Test configuration
+test:
+  require_new_tests: true  # Require new test files for implementation
+
+# Pull request configuration
+pr:
+  draft: false  # Create PRs as drafts
+  reviewers: []  # Auto-assign reviewers (e.g., ["username1", "username2"])
+
+# GitHub repository
+github:
+  repo: owner/repo
+
+# Component-specific configuration
+components:
+  frontend:
+    path: ./frontend
+    test_command: npm test
+    lint_command: npm run lint  # Optional
+    build_command: npm run build  # Optional
+
+  backend:
+    path: ./backend
+    test_command: go test ./...
+    lint_command: golangci-lint run  # Optional
+    build_command: go build ./...  # Optional
+
+  # Additional component types
+  serverless:
+    path: ./serverless
+    test_command: npm test
+
+  infra:
+    path: ./infra
+    test_command: terraform validate
+
+# Verbose logging
+verbose: false
 ```
+
+### Permission Modes
+
+The `agent.permission_mode` setting controls how Claude Code handles operations that require confirmation:
+
+- `default`: Prompts for approval on all operations (most restrictive)
+- `bypassPermissions`: Auto-approves all operations (default, fastest workflow)
+- `acceptEdits`: Automatically accepts file edits without confirmation
+- `dontAsk`: Skips all confirmation prompts
+- `plan`: Runs in plan mode, showing intended changes without executing
+- `auto`: Fully automatic mode with no user interaction
+
+For most use cases, `bypassPermissions` (the default) provides the best balance of speed and control.
 
 ### Verbose Mode
 
@@ -435,10 +497,14 @@ Example verbose output:
 
 rig-cli automatically detects project components based on issue labels:
 
-- frontend: Issues labeled with `frontend`
-- backend: Issues labeled with `backend`
-- fullstack: Issues labeled with `fullstack`
-- devnet: Issues labeled with `devnet`
+- `frontend`: Issues labeled with `frontend`
+- `backend`: Issues labeled with `backend`
+- `fullstack`: Issues labeled with `fullstack`
+- `devnet`: Issues labeled with `devnet`
+- `serverless`: Issues labeled with `serverless`
+- `infra`: Issues labeled with `infra`
+
+If no component label is found, defaults to `fullstack`.
 
 ### Allowed Tools by Component
 
@@ -466,7 +532,7 @@ Fullstack:
 ### Stage Progression
 
 ```
-pick → branch → implement → test → demo → pr → review
+pick → branch → implement → test → pr → review
 ```
 
 ### Stage Details
@@ -495,18 +561,13 @@ pick → branch → implement → test → demo → pr → review
    - Displays test results and coverage
    - Fails pipeline after max retries
 
-5. Demo (`rig demo`)
-   - Runs demo script to exercise feature
-   - Captures logs and output
-   - Logs to `.rig-logs/demo-issue-{number}.log`
-
-6. PR (`rig pr`)
+5. PR (`rig pr`)
    - Generates PR title and description
    - Creates pull request via GitHub CLI
    - Includes issue link and implementation summary
    - Updates state with PR number
 
-7. Review (`rig review`)
+6. Review (`rig review`)
    - Runs AI code review (read-only)
    - Parses findings from review file
    - Interactive triage of findings
@@ -529,7 +590,7 @@ The pipeline will resume from the current stage and continue through completion.
 
 ### State Management
 
-Pipeline state is stored in `.rig/state.json`:
+Pipeline state is stored in `.rig-state.json` in your project root:
 
 ```json
 {
@@ -542,7 +603,6 @@ Pipeline state is stored in `.rig/state.json`:
     "branch": "completed",
     "implement": "completed",
     "test": "pending",
-    "demo": "pending",
     "pr": "pending",
     "review": "pending"
   }
@@ -553,21 +613,16 @@ Pipeline state is stored in `.rig/state.json`:
 
 ```
 your-project/
-├── .rig/
-│   ├── config.json          # Configuration
-│   └── state.json           # Pipeline state
+├── .rig.yml                 # Configuration
+├── .rig-state.json          # Pipeline state (auto-generated)
 ├── .rig-logs/               # Agent execution logs
 │   ├── implement-issue-42.log
 │   ├── test-issue-42.log
 │   ├── fix-attempt-1.log
-│   ├── demo-issue-42.log
 │   └── review-issue-42.log
-├── .rig-reviews/            # Code review outputs
-│   └── issue-42/
-│       └── review-2024-01-15-120000.md
-└── .rig-demos/              # Demo recordings
+└── .rig-reviews/            # Code review outputs
     └── issue-42/
-        └── demo-2024-01-15-120000.log
+        └── review-2024-01-15-120000.md
 ```
 
 ## Examples
@@ -594,10 +649,6 @@ Stage: test
 Running tests...
 All tests passed (42 passed, 0 failed)
 
-Stage: demo
-Recording demonstration...
-Demo recorded
-
 Stage: pr
 Creating pull request...
 PR created: https://github.com/owner/repo/pull/100
@@ -609,7 +660,7 @@ Verdict: PASS
 Findings: 0
 
 Pipeline complete!
-Issue has been implemented, tested, demoed, and submitted for review.
+Issue has been implemented, tested, and submitted for review.
 ```
 
 ### Example 2: Test Failure with Auto-Fix
@@ -816,8 +867,8 @@ rig next                                    # Start fresh
 
 - Use `rig status` frequently to check progress
 - Use `rig reset` when switching issues
-- Don't manually edit `.rig/state.json`
-- Commit state changes if working across machines
+- Don't manually edit `.rig-state.json`
+- Avoid committing `.rig-state.json` (add to .gitignore)
 
 ## License
 

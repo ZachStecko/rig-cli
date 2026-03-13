@@ -1,0 +1,14 @@
+# Minimal configuration
+# Bare minimum - uses defaults for everything else
+
+github:
+  repo: yourorg/yourproject
+
+components:
+  frontend:
+    path: ./frontend
+    test_command: npm test
+
+  backend:
+    path: ./backend
+    test_command: go test ./...

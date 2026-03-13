@@ -1,0 +1,64 @@
+# Fullstack monorepo configuration
+# For: Projects with multiple components in one repo
+
+agent:
+  max_turns: 100  # Longer for complex cross-component changes
+  permission_mode: bypassPermissions
+
+queue:
+  default_component: null  # Don't default to one component
+  default_phase: null
+  phase_priorities:
+    "MVP": 4
+    "Beta": 3
+    "GA": 2
+    "Post-GA": 1
+  label_priorities:
+    "P0": 5
+    "P1": 4
+    "P2": 3
+    "P3": 2
+    "P4": 1
+
+test:
+  require_new_tests: true
+
+pr:
+  draft: false
+  reviewers:
+    - tech-lead
+    - senior-engineer
+
+github:
+  repo: yourorg/monorepo
+
+components:
+  # Web frontend
+  frontend:
+    path: ./packages/web
+    test_command: npm test
+    lint_command: npm run lint
+    build_command: npm run build
+
+  # API backend
+  backend:
+    path: ./packages/api
+    test_command: go test ./... -v
+    lint_command: golangci-lint run
+    build_command: go build ./...
+
+  # Serverless functions
+  serverless:
+    path: ./packages/functions
+    test_command: npm test
+    lint_command: npm run lint
+    build_command: npm run build
+
+  # Infrastructure as code
+  infra:
+    path: ./infrastructure
+    test_command: terraform validate
+    lint_command: tflint
+    build_command: terraform plan
+
+verbose: false
