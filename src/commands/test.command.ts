@@ -51,20 +51,65 @@ export class TestCommand extends BaseCommand {
    * and updates state based on outcome.
    *
    * @param options - Command options
+   * @param options.issue - Optional issue number to test (overrides state)
    * @param options.component - Optional component to test (overrides auto-detection)
    */
-  async execute(options?: { component?: string }): Promise<void> {
-    // Check for active pipeline
-    const stateExists = await this.state.exists();
+  async execute(options?: { issue?: string; component?: string }): Promise<void> {
+    // Determine issue number
+    let issueNumber: number;
+    let state: any;
+    let issueData: any; // Cache for issue data to avoid redundant API calls
 
-    if (!stateExists) {
-      this.logger.error("No active pipeline. Run 'rig next' to start.");
-      process.exit(1);
-      return; // For testing
+    if (options?.issue) {
+      // Use --issue flag
+      issueNumber = parseInt(options.issue, 10);
+      if (isNaN(issueNumber)) {
+        this.logger.error(`Invalid issue number: ${options.issue}`);
+        process.exit(1);
+        return; // For testing
+      }
+
+      // Fetch issue once (will be reused for component detection)
+      issueData = await this.github.viewIssue(issueNumber);
+
+      // Load or create minimal state for this issue
+      const stateExists = await this.state.exists();
+      if (stateExists) {
+        state = await this.state.read();
+      } else {
+        // Create minimal state for ad-hoc testing
+        state = {
+          issue_number: issueNumber,
+          issue_title: issueData.title,
+          branch: `issue-${issueNumber}`,
+          stage: 'test',
+          stages: {
+            pick: 'completed',
+            branch: 'pending',
+            implement: 'pending',
+            test: 'pending',
+            demo: 'pending',
+            pr: 'pending',
+            review: 'pending',
+          },
+        };
+      }
+    } else {
+      // Use state from active pipeline
+      const stateExists = await this.state.exists();
+
+      if (!stateExists) {
+        this.logger.error("No active pipeline. Run 'rig next' to start or use --issue <number>.");
+        process.exit(1);
+        return; // For testing
+      }
+
+      state = await this.state.read();
+      issueNumber = state.issue_number;
+
+      // Fetch issue for component detection
+      issueData = await this.github.viewIssue(issueNumber);
     }
-
-    // Load current state
-    const state = await this.state.read();
 
     // Determine component to test
     let component: ComponentType;
@@ -79,13 +124,12 @@ export class TestCommand extends BaseCommand {
       }
       component = options.component as ComponentType;
     } else {
-      // Auto-detect from issue labels
-      const issue = await this.github.viewIssue(state.issue_number);
-      const labels = issue.labels.map((l: any) => l.name);
+      // Auto-detect from issue labels using cached issue data
+      const labels = issueData.labels.map((l: any) => l.name);
       component = this.promptBuilder.detectComponent(labels);
     }
 
-    this.logger.header(`Testing Issue #${state.issue_number}`);
+    this.logger.header(`Testing Issue #${issueNumber}`);
     console.log('');
     this.logger.info(`Issue: ${state.issue_title}`);
     this.logger.info(`Component: ${component}`);
@@ -142,7 +186,7 @@ export class TestCommand extends BaseCommand {
       });
 
       console.log('');
-      this.logger.success(`Tests passed for issue #${state.issue_number}`);
+      this.logger.success(`Tests passed for issue #${issueNumber}`);
       this.logger.info("Run 'rig demo' to record a demo, or continue with next stage.");
     } catch (error) {
       // Mark test failed

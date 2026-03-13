@@ -26,13 +26,14 @@ export interface TestConfig {
   require_new_tests: boolean;
 }
 
-/**
- * Configuration for demo recording.
- */
-export interface DemoConfig {
-  /** Whether to record demos (default: true) */
-  enabled: boolean;
-}
+// DISABLED: Demo feature disabled for redesign
+// /**
+//  * Configuration for demo recording.
+//  */
+// export interface DemoConfig {
+//   /** Whether to record demos (default: true) */
+//   enabled: boolean;
+// }
 
 /**
  * Configuration for pull request creation.
@@ -76,7 +77,7 @@ export interface RigConfig {
   agent: AgentConfig;
   queue: QueueConfig;
   test: TestConfig;
-  demo: DemoConfig;
+  // demo: DemoConfig; // DISABLED: Demo feature disabled for redesign
   pr: PrConfig;
   /** Enable verbose debug output (default: false) */
   verbose?: boolean;
@@ -91,7 +92,7 @@ export const DEFAULT_CONFIG: RigConfig = {
   agent: { max_turns: 80, permission_mode: 'bypassPermissions' },
   queue: { default_phase: null, default_component: null },
   test: { require_new_tests: true },
-  demo: { enabled: true },
+  // demo: { enabled: true }, // DISABLED: Demo feature disabled for redesign
   pr: { draft: false, reviewers: [] },
   verbose: false,
 };

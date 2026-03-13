@@ -22,7 +22,7 @@ import { ResetCommand } from './commands/reset.command.js';
 import { RollbackCommand } from './commands/rollback.command.js';
 import { ImplementCommand } from './commands/implement.command.js';
 import { TestCommand } from './commands/test.command.js';
-import { DemoCommand } from './commands/demo.command.js';
+// import { DemoCommand } from './commands/demo.command.js'; // DISABLED: Demo feature disabled for redesign
 import { PrCommand } from './commands/pr.command.js';
 import { ReviewCommand } from './commands/review.command.js';
 import { ShipCommand } from './commands/ship.command.js';
@@ -129,6 +129,7 @@ program
 program
   .command('test')
   .description('Run tests for the current implementation')
+  .option('--issue <number>', 'Test a specific issue number (bypasses state)')
   .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack)')
   .action(async (options) => {
     await config.load();
@@ -137,34 +138,36 @@ program
     await testCommand.execute(options);
   });
 
-// Register demo command
-program
-  .command('demo')
-  .description('Record a demonstration of the implemented feature')
-  .option('--issue <number>', 'Record demo for a specific issue number')
-  .option('--component <name>', 'Component to demo (backend, frontend, devnet, fullstack)')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
-    await demoCommand.execute(options);
-  });
+// DISABLED: Demo feature disabled for redesign
+// // Register demo command
+// program
+//   .command('demo')
+//   .description('Record a demonstration of the implemented feature')
+//   .option('--issue <number>', 'Record demo for a specific issue number')
+//   .option('--component <name>', 'Component to demo (backend, frontend, devnet, fullstack)')
+//   .action(async (options) => {
+//     await config.load();
+//     logger.setVerbose(config.get().verbose || false);
+//     const demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
+//     await demoCommand.execute(options);
+//   });
 
 // Register pr command
 program
   .command('pr')
   .description('Create or update pull request for the current issue')
-  .action(async () => {
+  .option('--issue <number>', 'Create PR for a specific issue number (bypasses state)')
+  .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
     const prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
-    await prCommand.execute();
+    await prCommand.execute(options);
   });
 
 // Register ship command
 program
   .command('ship')
-  .description('Run full issue-to-PR pipeline (pick → implement → test → demo → pr → review)')
+  .description('Run full issue-to-PR pipeline (pick → implement → test → pr → review)')
   .option('--issue <number>', 'Start with a specific issue number')
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')

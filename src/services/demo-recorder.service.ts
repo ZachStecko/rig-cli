@@ -22,10 +22,14 @@ export interface DemoResult {
 }
 
 /**
+ * DISABLED: Demo feature disabled for redesign
+ *
  * DemoRecorderService orchestrates demo recording using Playwright and VHS.
  *
  * Records frontend demos using Playwright (browser automation) and backend demos
  * using VHS (terminal recording). Stores artifacts in .rig-reviews/issue-N/.
+ *
+ * NOTE: This service is currently disabled and all demo operations will be skipped.
  */
 export class DemoRecorderService {
   private logger: Logger;
@@ -206,11 +210,15 @@ export class DemoRecorderService {
    * @returns Demo result with success status
    */
   async recordDemo(issueNumber: number, component: ComponentType): Promise<DemoResult> {
-    const config = this.config.get();
-    if (config.demo.enabled === false) {
-      this.logger.dim('Demo recording disabled (demo.enabled: false)');
-      return { success: true, skipped: true };
-    }
+    // DISABLED: Demo feature disabled for redesign - always skip
+    this.logger.dim('Demo recording disabled - feature being redesigned');
+    return { success: true, skipped: true };
+
+    // const config = this.config.get();
+    // if (config.demo?.enabled === false) {
+    //   this.logger.dim('Demo recording disabled (demo.enabled: false)');
+    //   return { success: true, skipped: true };
+    // }
 
     const results: DemoResult[] = [];
 

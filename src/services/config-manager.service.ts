@@ -104,14 +104,15 @@ export class ConfigManager {
     return this.get().test;
   }
 
-  /**
-   * Gets the demo configuration section.
-   *
-   * @returns Demo configuration
-   */
-  getDemo() {
-    return this.get().demo;
-  }
+  // DISABLED: Demo feature disabled for redesign
+  // /**
+  //  * Gets the demo configuration section.
+  //  *
+  //  * @returns Demo configuration
+  //  */
+  // getDemo() {
+  //   return this.get().demo;
+  // }
 
   /**
    * Gets the PR configuration section.

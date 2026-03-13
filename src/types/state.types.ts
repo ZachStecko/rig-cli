@@ -1,6 +1,7 @@
 /**
  * Pipeline stage names representing the issue-to-PR workflow.
- * Stages execute in order: pick → branch → implement → test → demo → pr → review
+ * Stages execute in order: pick → branch → implement → test → pr → review
+ * Note: 'demo' stage is disabled but kept in type for backward compatibility
  */
 export type StageName = 'pick' | 'branch' | 'implement' | 'test' | 'demo' | 'pr' | 'review';
 
@@ -16,19 +17,21 @@ export type StageStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
 /**
  * The canonical order in which pipeline stages execute.
  * Used for stage progression and resume logic.
+ * Note: 'demo' stage removed - feature disabled for redesign
  */
-export const STAGE_ORDER: StageName[] = ['pick', 'branch', 'implement', 'test', 'demo', 'pr', 'review'];
+export const STAGE_ORDER: StageName[] = ['pick', 'branch', 'implement', 'test', 'pr', 'review'];
 
 /**
  * Initial state for all stages when creating a new pipeline.
  * All stages start as 'pending'.
+ * Note: 'demo' stage included for backward compatibility but is disabled
  */
 export const INITIAL_STAGES: Record<StageName, StageStatus> = {
   pick: 'pending',
   branch: 'pending',
   implement: 'pending',
   test: 'pending',
-  demo: 'pending',
+  demo: 'pending', // DISABLED: Demo feature disabled for redesign, kept for backward compatibility
   pr: 'pending',
   review: 'pending',
 };

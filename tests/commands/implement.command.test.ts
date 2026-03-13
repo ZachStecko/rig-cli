@@ -14,7 +14,7 @@ const createMockRigConfig = (overrides?: Partial<RigConfig>): RigConfig => ({
   agent: { max_turns: 20 },
   queue: { default_phase: null, default_component: null },
   test: { require_new_tests: true },
-  demo: { enabled: false },
+  // demo: { enabled: false }, // DISABLED: Demo feature disabled for redesign
   pr: { draft: false, reviewers: [] },
   ...overrides,
 });

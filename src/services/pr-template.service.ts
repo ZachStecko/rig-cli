@@ -302,32 +302,37 @@ export class PrTemplateService {
   }
 
   /**
+   * DISABLED: Demo feature disabled for redesign
+   *
    * Builds demo section by checking for demo files.
    *
    * @private
    * @param issueNumber - Issue number
-   * @returns Demo section markdown
+   * @returns Demo section markdown (always empty as feature is disabled)
    */
   private buildDemoSection(issueNumber: number): string {
-    const demoDir = resolve(this.projectRoot, `.rig-reviews/issue-${issueNumber}`);
+    // DISABLED: Demo feature disabled for redesign
+    return '';
 
-    if (!existsSync(demoDir)) {
-      return '_No demo recorded_';
-    }
-
-    // Check for .gif files (newest first would require fs.stat, keep it simple)
-    try {
-      const files = readdirSync(demoDir);
-      const demoFiles = files.filter((f: string) => f.startsWith('demo-') && f.endsWith('.gif'));
-
-      if (demoFiles.length > 0) {
-        // Use the first demo file found
-        return `![Demo](${demoFiles[0]})`;
-      }
-
-      return `Demo artifacts available in \`.rig-reviews/issue-${issueNumber}/\``;
-    } catch {
-      return '_No demo recorded_';
-    }
+    // const demoDir = resolve(this.projectRoot, `.rig-reviews/issue-${issueNumber}`);
+    //
+    // if (!existsSync(demoDir)) {
+    //   return '_No demo recorded_';
+    // }
+    //
+    // // Check for .gif files (newest first would require fs.stat, keep it simple)
+    // try {
+    //   const files = readdirSync(demoDir);
+    //   const demoFiles = files.filter((f: string) => f.startsWith('demo-') && f.endsWith('.gif'));
+    //
+    //   if (demoFiles.length > 0) {
+    //     // Use the first demo file found
+    //     return `![Demo](${demoFiles[0]})`;
+    //   }
+    //
+    //   return `Demo artifacts available in \`.rig-reviews/issue-${issueNumber}/\``;
+    // } catch {
+    //   return '_No demo recorded_';
+    // }
   }
 }

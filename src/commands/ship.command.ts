@@ -2,7 +2,7 @@ import { BaseCommand } from './base-command.js';
 import { NextCommand } from './next.command.js';
 import { ImplementCommand } from './implement.command.js';
 import { TestCommand } from './test.command.js';
-import { DemoCommand } from './demo.command.js';
+// import { DemoCommand } from './demo.command.js'; // DISABLED: Demo feature disabled for redesign
 import { PrCommand } from './pr.command.js';
 import { ReviewCommand } from './review.command.js';
 import { Logger } from '../services/logger.service.js';
@@ -40,15 +40,14 @@ export interface ShipOptions {
  * 2. branch - Create git branch
  * 3. implement - Run implementation agent
  * 4. test - Run tests (with retry loop, max 3 attempts)
- * 5. demo - Record demonstration
- * 6. pr - Create pull request
- * 7. review - Run code review agent
+ * 5. pr - Create pull request
+ * 6. review - Run code review agent
  */
 export class ShipCommand extends BaseCommand {
   private nextCommand: NextCommand;
   private implementCommand: ImplementCommand;
   private testCommand: TestCommand;
-  private demoCommand: DemoCommand;
+  // private demoCommand: DemoCommand; // DISABLED: Demo feature disabled for redesign
   private prCommand: PrCommand;
   private reviewCommand: ReviewCommand;
   private claude: ClaudeService;
@@ -77,7 +76,7 @@ export class ShipCommand extends BaseCommand {
     this.nextCommand = new NextCommand(logger, config, state, git, github, guard, projectRoot);
     this.implementCommand = new ImplementCommand(logger, config, state, git, github, guard, projectRoot);
     this.testCommand = new TestCommand(logger, config, state, git, github, guard, projectRoot);
-    this.demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
+    // this.demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot); // DISABLED: Demo feature disabled for redesign
     this.prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
     this.reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
 
@@ -153,7 +152,7 @@ export class ShipCommand extends BaseCommand {
 
     console.log('');
     this.logger.success('Pipeline complete!');
-    this.logger.info('Issue has been implemented, tested, demoed, and submitted for review.');
+    this.logger.info('Issue has been implemented, tested, and submitted for review.');
   }
 
   /**
@@ -165,7 +164,7 @@ export class ShipCommand extends BaseCommand {
    * @param startStage - Stage to start from
    */
   private async runPipeline(startStage: StageName): Promise<void> {
-    const stages: StageName[] = ['pick', 'branch', 'implement', 'test', 'demo', 'pr', 'review'];
+    const stages: StageName[] = ['pick', 'branch', 'implement', 'test', 'pr', 'review']; // 'demo' removed - feature disabled for redesign
     const startIndex = stages.indexOf(startStage);
 
     if (startIndex === -1) {
@@ -217,9 +216,9 @@ export class ShipCommand extends BaseCommand {
         await this.executeTestStageWithRetry();
         break;
 
-      case 'demo':
-        await this.demoCommand.execute({});
-        break;
+      // case 'demo': // DISABLED: Demo feature disabled for redesign
+      //   await this.demoCommand.execute({});
+      //   break;
 
       case 'pr':
         await this.prCommand.execute();

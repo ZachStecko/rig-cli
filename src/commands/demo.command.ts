@@ -11,11 +11,15 @@ import { TemplateEngine } from '../services/template-engine.service.js';
 import { ComponentType } from '../types/issue.types.js';
 
 /**
+ * DISABLED: Demo feature disabled for redesign
+ *
  * DemoCommand records a demonstration of the implemented feature.
  *
  * Auto-detects component from issue labels in state, or uses --component override.
  * Records frontend demos (Playwright) or backend demos (VHS) based on component type.
  * Stores demo artifacts in .rig-reviews/issue-N/ directory.
+ *
+ * NOTE: This command is currently disabled and all operations will be skipped.
  */
 export class DemoCommand extends BaseCommand {
   private demoRecorder: DemoRecorderService;

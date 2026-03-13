@@ -21,11 +21,12 @@ export interface TestOptions {
   component?: string;
 }
 
-/** Options for the 'demo' command (record demo for issue) */
-export interface DemoOptions {
-  issue?: number;
-  component?: string;
-}
+// DISABLED: Demo feature disabled for redesign
+// /** Options for the 'demo' command (record demo for issue) */
+// export interface DemoOptions {
+//   issue?: number;
+//   component?: string;
+// }
 
 /** Options for the 'ship' command (full pipeline orchestration) */
 export interface ShipOptions {
