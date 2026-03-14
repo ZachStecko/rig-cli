@@ -234,6 +234,72 @@ Update    Create
 └───────────────────────────┘
 ```
 
+### Flow: PR Feedback Command
+
+```
+$ rig pr -c
+$ rig pr -c --pr 123  # Specify PR explicitly
+        │
+        ▼
+┌───────────────────────────┐
+│  Determine PR number      │
+│  - Use --pr flag if given │
+│  - Else detect from       │
+│    current branch         │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Fetch PR details         │
+│  (title, branch)          │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Checkout PR branch if    │
+│  not already on it        │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Prompt user for          │
+│  multiline feedback       │
+│  (Ctrl+D to finish)       │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Post feedback as GitHub  │
+│  comment on PR            │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Build fix prompt with:   │
+│  - User feedback          │
+│  - PR context             │
+│  - Commit history         │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Run Claude agent to      │
+│  address feedback         │
+│  (logs to .rig-logs/)     │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Push changes to remote   │
+└───────────────────────────┘
+        │
+        ▼
+┌───────────────────────────┐
+│  Post reply comment on    │
+│  GitHub confirming fixes  │
+└───────────────────────────┘
+```
+
 ### Examples
 
 ```bash
@@ -250,6 +316,21 @@ $ rig pr --issue 456
 Creating Pull Request for Issue #456
 Branch: feature-xyz
 ✓ PR created: https://github.com/owner/repo/pull/789
+
+# Provide feedback on a PR and auto-fix issues
+$ git checkout issue-42-feature
+$ rig pr -c
+Detecting PR from branch: issue-42-feature
+Found PR #100
+Describe the issues to fix:
+> Fix the loading spinner styling
+> Add error handling for network failures
+✓ Feedback posted, agent running, changes pushed
+
+# Comment on specific PR
+$ rig pr -c --pr 123
+Using PR #123
+...
 
 # Override component detection
 $ rig test --issue 42 --component frontend
@@ -647,6 +728,21 @@ Use `--issue` flags for:
 - Re-running failed stages
 - Working on multiple issues simultaneously
 - Debugging specific stages
+
+### When to Use PR Feedback Mode
+
+Use `rig pr -c` for:
+- Addressing reviewer feedback on existing PRs
+- Quick iterations on PR changes
+- Automated fixes for minor issues
+- Team members providing structured feedback
+- Self-review and improvement cycles
+
+**Workflow:**
+1. Reviewer adds comments on GitHub PR
+2. Developer runs `rig pr -c` to provide consolidated feedback
+3. AI agent addresses the feedback automatically
+4. Changes are pushed and confirmed on GitHub
 
 ### State Management
 

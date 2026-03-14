@@ -237,6 +237,8 @@ Creates a pull request for the current branch.
 ```bash
 rig pr                             # Create PR from current pipeline state
 rig pr --issue 42                  # Create PR for specific issue (no pipeline needed)
+rig pr -c                          # Provide feedback on PR and run AI agent to fix issues
+rig pr -c --pr 123                 # Comment on specific PR number
 ```
 
 Features:
@@ -247,6 +249,16 @@ Features:
 - Adds AI-generated test plan checklist
 - Auto-detects component from issue labels
 - Can create or update existing PRs
+
+PR Feedback Mode (`-c` / `--comment`):
+
+1. Prompts for multiline feedback on a PR
+2. Posts feedback as a GitHub comment
+3. Runs Claude agent to address the feedback
+4. Pushes fixes to the PR branch
+5. Posts a reply comment confirming fixes
+
+The PR number is auto-detected from the current branch, or you can specify it with `--pr <number>`.
 
 #### `rig review`
 
@@ -739,6 +751,46 @@ Current stage: test
 Stage: test
 Running tests...
 [Pipeline continues from test stage...]
+```
+
+### Example 5: Interactive PR Feedback
+
+```bash
+$ git checkout issue-42-add-user-dashboard
+$ rig pr -c
+
+PR Feedback & Fix
+
+Detecting PR from branch: issue-42-add-user-dashboard
+Found PR #123
+PR: Add user dashboard
+Branch: issue-42-add-user-dashboard
+
+Describe the issues to fix (multiline input):
+  Press Ctrl+D when done
+
+> The loading state is not showing properly when fetching user data.
+> Also, the error handling needs to display a user-friendly message.
+> ^D
+
+Feedback received. Processing...
+
+[1/4] Posting feedback to GitHub PR...
+✓ Comment posted
+
+[2/4] Preparing fix prompt for agent...
+✓ Prompt assembled
+
+[3/4] Running Claude agent to address feedback...
+[Agent output...]
+✓ Agent completed
+
+[4/4] Pushing changes to remote...
+✓ Changes pushed
+
+✓ Reply posted to PR
+
+PR feedback workflow complete!
 ```
 
 ## Development
