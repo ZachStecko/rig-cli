@@ -94,16 +94,13 @@ export class ClaudeService {
       options.allowedTools,
     ];
 
-    // Only add --verbose if explicitly enabled
-    if (options.verbose) {
-      args.push('--verbose');
-    }
-
     // Add permission mode if specified
     if (options.permissionMode) {
       args.push('--permission-mode', options.permissionMode);
     }
 
+    // stream-json requires --verbose, so always enable it
+    args.push('--verbose');
     args.push('--output-format', 'stream-json');
 
     // Spawn claude process
