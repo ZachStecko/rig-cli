@@ -37,6 +37,38 @@ export class ClaudeService {
   }
 
   /**
+   * Detects if the current environment is a server/CI environment.
+   *
+   * @returns true if running in CI/server environment, false for local development
+   */
+  private isServerEnvironment(): boolean {
+    // Check for common CI environment variables
+    const ciEnvVars = [
+      'CI',           // Generic CI flag
+      'GITHUB_ACTIONS',
+      'GITLAB_CI',
+      'CIRCLECI',
+      'TRAVIS',
+      'JENKINS_HOME',
+      'BUILDKITE',
+      'DRONE',
+      'CODEBUILD_BUILD_ID',  // AWS CodeBuild
+    ];
+
+    // Check if any CI variable is set to 'true' or '1'
+    const isCI = ciEnvVars.some(envVar => {
+      const value = process.env[envVar];
+      return value === 'true' || value === '1';
+    });
+
+    // Additional heuristics for server detection
+    const hasDockerEnv = process.env.DOCKER_CONTAINER === 'true';
+
+    // Consider it a server if CI or Docker
+    return isCI || hasDockerEnv;
+  }
+
+  /**
    * Sends a simple prompt to Claude and returns the text response.
    *
    * Uses: claude -p "prompt" --output-format json
@@ -85,6 +117,17 @@ export class ClaudeService {
    * @returns Promise that resolves with the spawned ChildProcess
    */
   async run(options: ClaudeRunOptions): Promise<ChildProcess> {
+    // Check authentication method and environment
+    const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
+    const isServerEnv = this.isServerEnvironment();
+
+    if (isServerEnv && !hasApiKey) {
+      console.warn('\n⚠️  Warning: Running rig-cli in a CI/server environment without ANTHROPIC_API_KEY.');
+      console.warn('   Anthropic\'s Terms of Service require API key authentication for production use.');
+      console.warn('   For personal use on your local machine, subscription auth is fine.');
+      console.warn('   See: https://console.anthropic.com/ to get an API key\n');
+    }
+
     const args = [
       '-p',
       options.prompt,

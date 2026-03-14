@@ -6,6 +6,8 @@
 
 An AI agent orchestration framework that automates your entire development workflow—from GitHub issue selection to pull request creation and code review—powered by Claude AI.
 
+> **Disclaimer:** rig-cli is an unofficial third-party orchestration tool created by Zach Stecko. It is not affiliated with, endorsed by, or supported by Anthropic PBC. Users must have their own Claude subscription or API key and comply with [Anthropic's Terms of Service](https://www.anthropic.com/legal/consumer-terms).
+
 ## Overview
 
 rig-cli is an AI agent orchestration system that automates the software development lifecycle. It coordinates multiple AI agents through a structured pipeline, managing agent execution, state transitions, and inter-agent communication from issue selection through implementation, testing, and code review.
@@ -16,6 +18,41 @@ The tool operates in two modes:
 2. **Modular mode**: Run individual commands with `--issue` flags
 
 Each command (implement, test, pr, review) works standalone or as part of the pipeline.
+
+## How It Works
+
+rig-cli is an orchestration layer that coordinates multiple developer tools to automate your workflow. It does **not** make direct API calls to Anthropic or handle authentication itself.
+
+### Architecture
+
+```
+rig-cli (orchestrator)
+  ├─> Claude Code CLI (official @anthropic-ai/claude-code)
+  ├─> GitHub CLI (gh)
+  └─> Git
+```
+
+**Key technical details:**
+
+- **Spawns official tools**: rig-cli uses Node's `child_process.spawn()` to execute the official `claude` CLI binary installed on your system
+- **No token extraction**: Relies on your existing Claude CLI authentication without extracting, manipulating, or storing OAuth tokens
+- **No API client**: Does not use third-party API clients or reimplementations
+- **Uses documented automation features**: Leverages the `-p` (print and exit), `--output-format json`, and other flags designed for programmatic use
+
+This architectural pattern mirrors Anthropic's own [Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview), which spawns Claude Code CLI as a subprocess for automation workflows.
+
+**What rig-cli does:**
+1. Reads your project configuration and GitHub issues
+2. Assembles prompts with relevant context
+3. Spawns the official `claude` command with appropriate flags
+4. Coordinates with git and GitHub CLI for version control and PRs
+5. Parses outputs and manages workflow state
+
+**What rig-cli does NOT do:**
+- Extract or manipulate authentication tokens
+- Make direct API calls to Anthropic
+- Bypass Claude's safety features or guardrails
+- Modify Claude's responses or behavior
 
 ## Features
 
@@ -78,6 +115,47 @@ Each command (implement, test, pr, review) works standalone or as part of the pi
   npm install -g @anthropics/claude-cli
   ```
 - Git: For version control operations
+
+### Authentication Methods
+
+rig-cli works with both Claude subscription and API key authentication. Choose the method that fits your use case:
+
+#### For Personal Use (Recommended for Local Development)
+
+Authenticate Claude CLI with your Claude Pro/Max subscription:
+
+```bash
+# Login with your Anthropic account
+claude login
+```
+
+**Best for:**
+- Personal productivity on your local machine
+- Individual developer workflows
+- Ad-hoc issue implementation
+
+#### For Production/CI/CD (Required for Server Deployments)
+
+Use an Anthropic API key for programmatic access:
+
+```bash
+# Set your API key as an environment variable
+export ANTHROPIC_API_KEY=your_api_key_here
+
+# Or add to your shell profile (.bashrc, .zshrc, etc.)
+echo 'export ANTHROPIC_API_KEY=your_api_key_here' >> ~/.zshrc
+```
+
+**Required for:**
+- Running rig-cli on servers or VPS
+- CI/CD pipelines
+- Team/business usage
+- High-volume automation
+- Any non-local development environment
+
+**Why this matters:** Anthropic's [Consumer Terms of Service](https://www.anthropic.com/legal/consumer-terms) prohibit using subscription OAuth tokens in production automation or on servers. For personal use on your local machine, either authentication method works. For production, CI/CD, or server deployments, you must use API keys to ensure compliance with Anthropic's [Commercial Terms](https://www.anthropic.com/legal/commercial-terms).
+
+**Get an API key:** Visit [Anthropic Console](https://console.anthropic.com/) to generate an API key for commercial use.
 
 ### Install rig-cli
 
@@ -844,6 +922,85 @@ rig-cli/
 │   └── integration/
 └── templates/              # Prompt templates
 ```
+
+## FAQ
+
+### Is it okay to use rig-cli with my Claude Pro/Max subscription?
+
+**Yes, for personal use on your local machine.** rig-cli spawns the official Claude Code CLI, which is designed for both interactive and programmatic use through its documented automation features (`-p`, `--output-format json`, etc.).
+
+**However, for the following scenarios, you must use API keys:**
+- Server/VPS deployments
+- CI/CD pipelines
+- Business/team usage
+- High-volume automation
+
+This aligns with Anthropic's distinction between Consumer Terms (subscription) and Commercial Terms (API keys). See the [Authentication Methods](#authentication-methods) section for setup instructions.
+
+### How is rig-cli different from tools that were banned?
+
+In February 2026, Anthropic clarified their terms to prohibit tools that **extract OAuth tokens** from Claude subscriptions to build third-party API clients. rig-cli is fundamentally different:
+
+**What banned tools did:**
+- Extracted OAuth tokens from subscription authentication
+- Built custom API clients using those tokens
+- Created "unusual traffic patterns without telemetry" (per Anthropic)
+- Bypassed Anthropic's official tools entirely
+
+**What rig-cli does:**
+1. Uses the official `claude` binary (not a reimplementation)
+2. Does not extract, manipulate, or store authentication tokens
+3. Relies on Claude CLI's own authentication mechanism
+4. Uses documented automation features (`-p`, `--output-format json`, `--allowedTools`)
+5. Preserves all of Anthropic's telemetry and safety features
+
+The architectural pattern is nearly identical to Anthropic's own [Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview), which spawns Claude CLI as a subprocess for automation.
+
+### Can I get in trouble for using rig-cli?
+
+Using rig-cli on your own computer for personal development follows documented patterns and uses official tools. The tool itself doesn't do anything that Anthropic's Agent SDK doesn't do.
+
+**To ensure compliance:**
+- Use it locally on your own machine for personal projects (with subscription or API key)
+- Use API keys (not subscription auth) for server/VPS/CI deployments
+- Don't run 24/7 high-volume automation on consumer subscription plans
+- Follow Anthropic's [Usage Policy](https://www.anthropic.com/legal/aup)
+
+**If you're uncertain:** Use an API key - there's zero ambiguity with Commercial Terms. API keys are designed specifically for programmatic use and automation.
+
+### Why does rig-cli spawn Claude programmatically? Isn't that against the ToS?
+
+Anthropic's Consumer Terms prohibit "automated or non-human means" **except** when accessing via an API key or "where we otherwise explicitly permit it."
+
+The Claude Code CLI includes specific flags for automation:
+- `-p, --print` - Documentation states "useful for pipes"
+- `--output-format json` - For programmatic parsing
+- `--no-session-persistence` - For stateless automation
+
+These documented features indicate explicit permission for programmatic use. Additionally, Anthropic's own Agent SDK uses the same pattern: spawning `claude` as a subprocess.
+
+**The key distinction:**
+- ❌ Prohibited: Extracting tokens to build third-party API clients
+- ✅ Allowed: Spawning the official `claude` binary with its documented automation flags
+
+### What if I want official clarification from Anthropic?
+
+If you need absolute certainty for your specific use case, contact Anthropic support with details about:
+- Your usage pattern (local development vs server deployment)
+- Authentication method (subscription vs API key)
+- Volume and frequency of automation
+
+Get their response in writing for your records.
+
+### Does rig-cli send data to third parties?
+
+No. rig-cli is a local orchestration tool that:
+- Runs entirely on your machine
+- Spawns official tools (Claude CLI, GitHub CLI, Git)
+- Does not send data to any third parties
+- Does not include telemetry or tracking
+
+All data flows through official Anthropic and GitHub channels, governed by their respective privacy policies.
 
 ## Troubleshooting
 
