@@ -12,6 +12,7 @@ import { TestRunnerService } from '../services/test-runner.service.js';
 import { ClaudeService } from '../services/claude.service.js';
 import { exec } from '../utils/shell.js';
 import { ChildProcess } from 'child_process';
+import { prettyPrintJson } from '../utils/format.js';
 
 /**
  * PrCommand creates or updates a pull request for the implemented issue.
@@ -303,7 +304,7 @@ export class PrCommand extends BaseCommand {
 
     // Prompt for user feedback
     this.logger.info('Describe the issues to fix (multiline input):');
-    this.logger.dim('  Press Ctrl+D when done, or type "EOF" alone on a line');
+    this.logger.dim('  Press Ctrl+D when done');
     console.log('');
 
     const userFeedback = await this.promptMultiline();
@@ -350,7 +351,7 @@ export class PrCommand extends BaseCommand {
       });
 
       // Stream the process output
-      await this.streamProcess(child);
+      await this.streamProcess(child, verbose);
     } catch (error) {
       this.logger.error(`Agent failed: ${(error as Error).message}`);
       process.exit(1);
@@ -387,11 +388,12 @@ Please review the changes.`;
   }
 
   /**
-   * Streams Claude Code process output with proper JSON parsing.
+   * Streams Claude Code process output with proper JSON parsing and formatting.
    *
    * @param child - ChildProcess to stream
+   * @param verbose - Whether to show verbose output
    */
-  private async streamProcess(child: ChildProcess): Promise<void> {
+  private async streamProcess(child: ChildProcess, verbose: boolean = false): Promise<void> {
     return new Promise((resolve, reject) => {
       let buffer = '';
 
@@ -450,14 +452,74 @@ Please review the changes.`;
             else if (parsed.type === 'error') {
               this.logger.error(parsed.message || JSON.stringify(parsed));
             }
-            // Skip thinking, debug, and other internal messages
-            else if (parsed.type !== 'thinking' && parsed.type !== 'debug' && parsed.type !== 'session') {
-              // Unknown format - show it in case it's important
-              process.stdout.write(line + '\n');
+            // Handle stream events
+            else if (parsed.type === 'stream_event') {
+              if (verbose && parsed.event) {
+                const eventType = parsed.event.type || 'unknown';
+                this.logger.dim(`  Stream: ${eventType}`);
+              }
+            }
+            // Handle system messages
+            else if (parsed.type === 'system') {
+              if (verbose) {
+                const msg = parsed.message || parsed.content || 'System event';
+                this.logger.dim(`System: ${msg}`);
+              }
+            }
+            // Handle result messages
+            else if (parsed.type === 'result') {
+              if (verbose) {
+                const status = parsed.status || 'completed';
+                this.logger.dim(`Result: ${status}`);
+              }
+            }
+            // Handle task progress
+            else if (parsed.type === 'task_progress') {
+              if (verbose) {
+                const task = parsed.task || parsed.description || 'task';
+                const progress = parsed.progress !== undefined ? ` (${Math.round(parsed.progress * 100)}%)` : '';
+                this.logger.dim(`  Progress: ${task}${progress}`);
+              }
+            }
+            // Handle tool use notifications
+            else if (parsed.type === 'tool_use_notification') {
+              if (verbose) {
+                const tool = parsed.tool || parsed.name || 'unknown';
+                const status = parsed.status || '';
+                this.logger.dim(`  Tool: ${tool}${status ? ` (${status})` : ''}`);
+              }
+            }
+            // Handle thinking (verbose only)
+            else if (parsed.type === 'thinking') {
+              if (verbose && parsed.content) {
+                this.logger.dim(`  [Thinking] ${parsed.content.substring(0, 80)}${parsed.content.length > 80 ? '...' : ''}`);
+              }
+            }
+            // Handle debug (verbose only)
+            else if (parsed.type === 'debug') {
+              if (verbose) {
+                const category = parsed.category || '';
+                const msg = parsed.message || JSON.stringify(parsed);
+                this.logger.dim(`  [Debug${category ? ':' + category : ''}] ${msg}`);
+              }
+            }
+            // Handle session messages (verbose only)
+            else if (parsed.type === 'session') {
+              if (verbose) {
+                const status = parsed.status || 'active';
+                this.logger.dim(`  Session: ${status}`);
+              }
+            }
+            // Skip ping events (keepalive)
+            else if (parsed.type === 'ping') {
+              // Silently skip
+            }
+            // All other message types - silently skip (already handled or internal)
+            else {
+              // Silently skip unknown message types
             }
           } catch (e) {
-            // Not JSON, treat as regular output
-            process.stdout.write(line + '\n');
+            prettyPrintJson(line);
           }
         }
       });

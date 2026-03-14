@@ -10,6 +10,7 @@ import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { ChildProcess } from 'child_process';
 import * as path from 'path';
+import { prettyPrintJson } from '../utils/format.js';
 
 /**
  * ImplementCommand runs Claude Code agent to implement an issue.
@@ -327,12 +328,11 @@ export class ImplementCommand extends BaseCommand {
             }
             // Skip thinking, debug, and other internal messages
             else if (parsed.type !== 'thinking' && parsed.type !== 'debug' && parsed.type !== 'session') {
-              // Unknown format - show it in case it's important
-              process.stdout.write(line + '\n');
+              // Unknown format - pretty-print if it's JSON
+              prettyPrintJson(line);
             }
           } catch (e) {
-            // Not JSON, treat as regular output
-            process.stdout.write(line + '\n');
+            prettyPrintJson(line);
           }
         }
       });

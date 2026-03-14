@@ -46,7 +46,7 @@ export class CreateIssueCommand extends BaseCommand {
 
     // Get raw description from user
     this.logger.info('Describe the issue in your own words (multiline input):');
-    this.logger.dim('  Press Ctrl+D when done, or type "EOF" alone on a line');
+    this.logger.dim('  Press Ctrl+D when done');
     console.log('');
     const rawDescription = await this.promptMultiline();
 
