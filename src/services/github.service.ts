@@ -1,6 +1,6 @@
 import { exec } from '../utils/shell.js';
 import { Issue } from '../types/issue.types.js';
-import { writeFile, unlink, mkdtemp } from 'fs/promises';
+import { writeFile, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -262,13 +262,7 @@ export class GitHubService {
       }
       return parseInt(urlMatch[1], 10);
     } finally {
-      // Clean up temporary files
-      try {
-        await unlink(bodyFile).catch(() => {});
-        await unlink(tmpDir).catch(() => {});
-      } catch {
-        // Ignore cleanup errors
-      }
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -314,12 +308,7 @@ export class GitHubService {
       // gh pr create returns the PR URL on stdout
       return result.stdout.trim();
     } finally {
-      try {
-        await unlink(bodyFile).catch(() => {});
-        await unlink(tmpDir).catch(() => {});
-      } catch {
-        // Ignore cleanup errors
-      }
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -355,12 +344,7 @@ export class GitHubService {
 
         await this.gh(args.join(' '));
       } finally {
-        try {
-          await unlink(bodyFile).catch(() => {});
-          await unlink(tmpDir).catch(() => {});
-        } catch {
-          // Ignore cleanup errors
-        }
+        await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
       }
     } else {
       // Only updating title, no need for temp file
@@ -401,12 +385,7 @@ export class GitHubService {
 
       return parseInt(result.stdout.trim(), 10);
     } finally {
-      try {
-        await unlink(commentFile).catch(() => {});
-        await unlink(tmpDir).catch(() => {});
-      } catch {
-        // Ignore cleanup errors
-      }
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 

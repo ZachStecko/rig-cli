@@ -1,5 +1,5 @@
 import { exec } from '../utils/shell.js';
-import { writeFile, unlink, mkdtemp } from 'fs/promises';
+import { writeFile, mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -45,6 +45,11 @@ export class LLMService {
    * @throws Error if Claude CLI is not available or API call fails
    */
   async structureIssue(rawDescription: string): Promise<StructuredIssue> {
+    // Prevent nested Claude Code sessions
+    if (process.env.CLAUDECODE) {
+      throw new Error('Cannot call Claude CLI from within a Claude Code session (nested sessions not supported)');
+    }
+
     // Check if Claude is installed
     const installed = await this.isInstalled();
     if (!installed) {
@@ -106,14 +111,8 @@ export class LLMService {
 
       return structured;
     } finally {
-      // Clean up temporary files
-      try {
-        await unlink(promptFile).catch(() => {});
-        await unlink(schemaFile).catch(() => {});
-        await unlink(tmpDir).catch(() => {});
-      } catch {
-        // Ignore cleanup errors
-      }
+      // Clean up temporary directory and all contents
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 
@@ -124,23 +123,36 @@ export class LLMService {
    * @returns Formatted prompt
    */
   private buildIssuePrompt(rawDescription: string): string {
-    return `You are structuring a GitHub issue from a developer's raw description.
+    return `You are writing an implementation spec for an AI coding agent. The output will be filed as a GitHub issue that another AI agent reads via \`gh issue view\` and implements directly — so precision matters more than prose.
 
-CRITICAL RULES:
-1. Write like a senior developer - direct, technical, no corporate speak
-2. NO excessive markdown formatting (no bold everywhere, no fancy headers)
-3. Be clear and concise
-4. A bit of developer personality is good - don't be a robot
-5. Focus on technical details and context
-
-Raw description:
+Raw developer input:
 ${rawDescription}
 
-Create a GitHub issue with:
-- A clear, concise title (50-80 chars)
-- A body with relevant technical details, context, and any reproduction steps or acceptance criteria
+TITLE:
+- Imperative mood, 50-80 characters
+- Add a component prefix if obvious (e.g. "cli: ...", "api: ...")
 
-Return ONLY a JSON object with "title" and "body" fields.`;
+BODY — use exactly these markdown H2 sections. Skip a section only if it genuinely does not apply:
+
+## Problem / Motivation
+Concrete symptom or gap in 2-4 sentences. No abstract desires.
+
+## Approach
+Which layers, modules, or files are involved. What pattern to follow. Key constraints or trade-offs. If something cannot be inferred from the raw description, write "TBD: <what needs deciding>" instead of guessing.
+
+## Acceptance Criteria
+3-8 bulleted, testable statements (e.g. "\`GET /api/foo\` returns 200 with the new field").
+
+## Notes
+Edge cases, migrations, dependency changes. Omit this section entirely if there is nothing to say.
+
+ANTI-SLOP RULES — strictly follow these:
+- No "This issue aims to...", "This PR will...", or similar filler openers
+- No inline bold markup (**text**) anywhere in the body
+- No emoji anywhere
+- No sections beyond the four listed above
+- Target 150-400 words for the body
+- Write like a senior engineer talking to another senior engineer`;
   }
 
   /**
@@ -154,14 +166,17 @@ Return ONLY a JSON object with "title" and "body" fields.`;
       properties: {
         title: {
           type: 'string',
-          description: 'Issue title (50-80 characters)',
+          description:
+            'Imperative-mood issue title, 50-80 characters. Use a component prefix (e.g. "cli:", "api:") when the scope is obvious.',
         },
         body: {
           type: 'string',
-          description: 'Issue body with technical details and context',
+          description:
+            'Implementation spec body using markdown H2 sections: "## Problem / Motivation" (2-4 sentences), "## Approach" (layers, patterns, constraints; use "TBD:" for unknowns), "## Acceptance Criteria" (3-8 testable bullets), and optionally "## Notes" (edge cases, migrations). Target 150-400 words. No emoji, no bold spam, no filler phrases.',
         },
       },
       required: ['title', 'body'],
+      additionalProperties: false,
     };
   }
 }
