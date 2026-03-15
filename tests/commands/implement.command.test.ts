@@ -279,7 +279,7 @@ describe('ImplementCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['frontend', 'p0']);
+      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['frontend', 'p0'], 'Add user authentication', undefined);
       expect(mockPromptBuilder.buildAllowedTools).toHaveBeenCalledWith('frontend');
     });
 

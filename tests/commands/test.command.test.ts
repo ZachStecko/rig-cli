@@ -128,7 +128,7 @@ describe('TestCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend']);
+      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend'], 'Add user authentication', undefined);
       expect(mockTestRunner.runAllTests).toHaveBeenCalledWith('backend');
     });
 

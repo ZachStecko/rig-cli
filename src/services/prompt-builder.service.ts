@@ -52,7 +52,7 @@ export class PromptBuilderService {
    * @param labels - Array of label names
    * @returns Detected component type
    */
-  detectComponent(labels: string[]): ComponentType {
+  detectComponent(labels: string[], issueTitle?: string, issueBody?: string): ComponentType {
     const lowercaseLabels = labels.map(l => l.toLowerCase());
 
     const hasBackend = lowercaseLabels.includes('backend');
@@ -71,12 +71,49 @@ export class PromptBuilderService {
       return 'fullstack';
     }
 
-    // Return single component or default to fullstack
+    // Return single component if labeled
     if (hasBackend) return 'backend';
     if (hasFrontend) return 'frontend';
     if (hasDevnet) return 'devnet';
 
-    return 'fullstack'; // Default
+    // No label — infer from issue content
+    return this.inferComponentFromContent(issueTitle, issueBody);
+  }
+
+  /**
+   * Infers the component type from issue title and body when no label is present.
+   *
+   * Looks for file path patterns and keywords to determine if the change
+   * is frontend, backend, or fullstack.
+   */
+  private inferComponentFromContent(title?: string, body?: string): ComponentType {
+    const text = `${title || ''} ${body || ''}`.toLowerCase();
+
+    // Check for file path hints
+    const frontendPaths = ['/web/', '/frontend/', '/src/app/', '/src/components/', '/src/pages/', '.tsx', '.jsx', '.css', '.scss', 'tailwind', 'next.config'];
+    const backendPaths = ['/api/', '/server/', '/backend/', '/cmd/', '/internal/', '/pkg/', 'go.mod', '.go', 'handler', 'middleware', 'migration'];
+    const devnetPaths = ['/devnet/', 'docker-compose', 'devnet'];
+
+    const hasFrontendHints = frontendPaths.some(p => text.includes(p));
+    const hasBackendHints = backendPaths.some(p => text.includes(p));
+    const hasDevnetHints = devnetPaths.some(p => text.includes(p));
+
+    // Check for UI/UX keywords
+    const frontendKeywords = ['button', 'page', 'component', 'ui', 'ux', 'css', 'style', 'layout', 'modal', 'form', 'landing', 'navbar', 'sidebar', 'responsive', 'icon', 'font', 'color', 'theme', 'dark mode', 'animation', 'hover', 'click', 'render', 'react', 'next.js'];
+    const backendKeywords = ['endpoint', 'api route', 'database', 'migration', 'schema', 'query', 'grpc', 'rest api', 'middleware', 'authentication', 'authorization'];
+
+    const hasFrontendKeywords = frontendKeywords.some(k => text.includes(k));
+    const hasBackendKeywords = backendKeywords.some(k => text.includes(k));
+
+    const frontendScore = (hasFrontendHints ? 2 : 0) + (hasFrontendKeywords ? 1 : 0);
+    const backendScore = (hasBackendHints ? 2 : 0) + (hasBackendKeywords ? 1 : 0);
+
+    if (hasDevnetHints) return 'devnet';
+    if (frontendScore > 0 && backendScore === 0) return 'frontend';
+    if (backendScore > 0 && frontendScore === 0) return 'backend';
+    if (frontendScore > 0 && backendScore > 0) return 'fullstack';
+
+    return 'fullstack'; // True fallback when no signals at all
   }
 
   /**

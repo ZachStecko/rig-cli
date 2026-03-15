@@ -125,7 +125,7 @@ export class TestCommand extends BaseCommand {
     } else {
       // Auto-detect from issue labels using cached issue data
       const labels = issueData.labels.map((l: any) => l.name);
-      component = this.promptBuilder.detectComponent(labels);
+      component = this.promptBuilder.detectComponent(labels, issueData.title, issueData.body);
     }
 
     this.logger.header(`Testing Issue #${issueNumber}`);

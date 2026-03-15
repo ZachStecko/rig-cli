@@ -406,7 +406,7 @@ describe('PrCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend', 'enhancement']);
+      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend', 'enhancement'], 'Add user dashboard', undefined);
       expect(mockPrTemplate.generatePrBody).toHaveBeenCalledWith(42, 'backend');
     });
 

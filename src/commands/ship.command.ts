@@ -135,7 +135,7 @@ export class ShipCommand extends BaseCommand {
         console.log('');
 
         // Initialize state with specific issue
-        await this.nextCommand.execute({ phase: options.phase, component: options.component });
+        await this.nextCommand.execute({ issue: options.issue, phase: options.phase, component: options.component });
       } else {
         // Pick next issue from queue
         this.logger.info('Picking next issue from queue...');
