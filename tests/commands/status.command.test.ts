@@ -93,7 +93,6 @@ describe('StatusCommand', () => {
           branch: 'completed',
           implement: 'in_progress',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -140,7 +139,6 @@ describe('StatusCommand', () => {
           branch: 'completed',
           implement: 'completed',
           test: 'in_progress',
-          demo: 'failed',
           pr: 'pending',
           review: 'pending',
         },
@@ -154,12 +152,11 @@ describe('StatusCommand', () => {
 
       await command.execute();
 
-      // Verify all stages are displayed
+      // Verify all stages are displayed (demo removed - feature disabled)
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('pick'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('branch'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('implement'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('test'));
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('demo'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('pr'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('review'));
     });
@@ -175,7 +172,6 @@ describe('StatusCommand', () => {
           branch: 'completed',
           implement: 'in_progress',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -203,7 +199,6 @@ describe('StatusCommand', () => {
           branch: 'pending',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -237,7 +232,6 @@ describe('StatusCommand', () => {
           branch: 'pending',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -266,7 +260,6 @@ describe('StatusCommand', () => {
           branch: 'completed',
           implement: 'in_progress',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -295,7 +288,6 @@ describe('StatusCommand', () => {
           branch: 'completed',
           implement: 'completed',
           test: 'failed',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -324,7 +316,6 @@ describe('StatusCommand', () => {
           branch: 'pending',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },

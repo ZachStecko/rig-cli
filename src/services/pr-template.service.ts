@@ -2,7 +2,6 @@ import { GitHubService } from './github.service.js';
 import { GitService } from './git.service.js';
 import { TemplateEngine } from './template-engine.service.js';
 import { TestRunnerService } from './test-runner.service.js';
-import { ClaudeService } from './claude.service.js';
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -23,7 +22,6 @@ export class PrTemplateService {
   private git: GitService;
   private templateEngine: TemplateEngine;
   private testRunner: TestRunnerService;
-  private claude: ClaudeService;
   private projectRoot: string;
 
   /**
@@ -33,7 +31,6 @@ export class PrTemplateService {
    * @param git - GitService for git operations
    * @param templateEngine - TemplateEngine for rendering templates
    * @param testRunner - TestRunnerService for test operations
-   * @param claude - ClaudeService for AI-powered test instruction generation
    * @param projectRoot - Absolute path to project root
    */
   constructor(
@@ -41,14 +38,12 @@ export class PrTemplateService {
     git: GitService,
     templateEngine: TemplateEngine,
     testRunner: TestRunnerService,
-    claude: ClaudeService,
     projectRoot: string
   ) {
     this.github = github;
     this.git = git;
     this.templateEngine = templateEngine;
     this.testRunner = testRunner;
-    this.claude = claude;
     this.projectRoot = projectRoot;
   }
 

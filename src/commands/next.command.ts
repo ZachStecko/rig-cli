@@ -13,6 +13,8 @@ import { INITIAL_STAGES } from '../types/state.types.js';
  * Options for the next command.
  */
 export interface NextOptions {
+  /** Specific issue number to pick */
+  issue?: string;
   /** Filter by phase (e.g., "Phase 1: MVP") */
   phase?: string;
   /** Filter by component (backend, frontend, fullstack, devnet) */
@@ -60,8 +62,24 @@ export class NextCommand extends BaseCommand {
     this.logger.header('Picking Next Issue');
     console.log('');
 
-    // Get next issue without an open PR
-    const issue = await this.issueQueue.next(options);
+    // Get specific issue or next from queue
+    let issue;
+    if (options.issue) {
+      const issueNumber = parseInt(options.issue, 10);
+      if (isNaN(issueNumber)) {
+        this.logger.error(`Invalid issue number: ${options.issue}`);
+        process.exit(1);
+        return;
+      }
+      const ghIssue = await this.github.viewIssue(issueNumber);
+      issue = {
+        number: ghIssue.number,
+        title: ghIssue.title,
+        labels: ghIssue.labels.map((l: any) => l.name),
+      };
+    } else {
+      issue = await this.issueQueue.next(options);
+    }
 
     if (!issue) {
       this.logger.warn('No eligible issues found in the queue.');

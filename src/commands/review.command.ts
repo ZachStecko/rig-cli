@@ -5,10 +5,9 @@ import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
-import { ClaudeService } from '../services/claude.service.js';
+import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
-import { ChildProcess } from 'child_process';
 import * as path from 'path';
 import { readFile, existsSync } from 'fs';
 import { promisify } from 'util';
@@ -41,7 +40,6 @@ interface ReviewResult {
  * and provides interactive triage to fix selected issues.
  */
 export class ReviewCommand extends BaseCommand {
-  private claude: ClaudeService;
   private promptBuilder: PromptBuilderService;
 
   /**
@@ -57,7 +55,6 @@ export class ReviewCommand extends BaseCommand {
     projectRoot?: string
   ) {
     super(logger, config, state, git, github, guard, projectRoot);
-    this.claude = new ClaudeService();
     const templateEngine = new TemplateEngine();
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
   }
@@ -107,7 +104,6 @@ export class ReviewCommand extends BaseCommand {
             branch: 'pending',
             implement: 'pending',
             test: 'pending',
-            demo: 'pending',
             pr: 'pending',
             review: 'pending',
           },
@@ -153,7 +149,6 @@ export class ReviewCommand extends BaseCommand {
             branch: 'completed',
             implement: 'completed',
             test: 'completed',
-            demo: 'completed',
             pr: 'completed',
             review: 'pending',
           },
@@ -173,11 +168,13 @@ export class ReviewCommand extends BaseCommand {
       issueNumber = state.issue_number;
     }
 
-    // Check Claude is installed (skip if dry-run)
+    // Check Claude agent is available (skip if dry-run)
     if (!options?.dryRun) {
-      const claudeInstalled = await this.claude.isInstalled();
-      if (!claudeInstalled) {
-        this.logger.error('Claude CLI is not installed. Install it first: npm install -g @anthropics/claude-cli');
+      const agent = new ClaudeCodeAgent();
+      const available = await agent.isAvailable();
+      if (!available) {
+        this.logger.error('ANTHROPIC_API_KEY environment variable is not set.');
+        this.logger.info('Set your API key: export ANTHROPIC_API_KEY=sk-...');
         process.exit(1);
         return; // For testing
       }
@@ -208,10 +205,12 @@ export class ReviewCommand extends BaseCommand {
     const prompt = await this.promptBuilder.assembleReviewPrompt(issueNumber);
 
     // Extract review file path from prompt (it's in the template)
+    // Resolve relative to git repo root since the agent runs from there
+    const repoRoot = await this.git.repoRoot();
     const reviewFilePathMatch = prompt.match(/`(\.rig-reviews\/issue-\d+\/review-[^`]+\.md)`/);
     const reviewFilePath = reviewFilePathMatch
-      ? path.join(this.projectRoot || process.cwd(), reviewFilePathMatch[1])
-      : path.join(this.projectRoot || process.cwd(), `.rig-reviews/issue-${issueNumber}/review-latest.md`);
+      ? path.join(repoRoot, reviewFilePathMatch[1])
+      : path.join(repoRoot, `.rig-reviews/issue-${issueNumber}/review-latest.md`);
 
     // Get max turns, verbose, and permission mode from config
     const rigConfig = this.config.get();
@@ -222,16 +221,16 @@ export class ReviewCommand extends BaseCommand {
     // Get issue for component detection
     const issue = await this.github.viewIssue(issueNumber);
     const labels = issue.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels);
+    const component = this.promptBuilder.detectComponent(labels, issue.title, issue.body);
 
     // Build allowed tools - read-only for review
     const allowedToolsReview = 'Read,Grep,Glob';
     // Full tools for fixes
     const allowedToolsFix = this.promptBuilder.buildAllowedTools(component);
 
-    // Prepare log file
+    // Prepare log file (use repo root so paths are consistent)
     const logFile = path.join(
-      this.projectRoot || process.cwd(),
+      repoRoot,
       '.rig-logs',
       `review-issue-${issueNumber}.log`
     );
@@ -259,17 +258,20 @@ export class ReviewCommand extends BaseCommand {
       this.logger.step(2, 3, 'Running code review agent...');
       console.log('');
 
-      const child = await this.claude.run({
+      const reviewAgent = new ClaudeCodeAgent();
+      const reviewSession = await reviewAgent.createSession({
         prompt,
-        maxTurns,
-        allowedTools: allowedToolsReview,
+        maxIterations: maxTurns,
+        allowedTools: allowedToolsReview.split(','),
         logFile,
         verbose,
-        permissionMode,
+        providerOptions: { permissionMode },
       });
 
-      // Stream output to console
-      await this.streamProcess(child);
+      // Stream events to console
+      for await (const event of reviewSession.events) {
+        this.handleAgentEvent(event);
+      }
 
       console.log('');
 
@@ -305,16 +307,20 @@ export class ReviewCommand extends BaseCommand {
               `fix-issue-${issueNumber}-finding-${i + 1}.log`
             );
 
-            const fixChild = await this.claude.run({
+            const fixAgent = new ClaudeCodeAgent();
+            const fixSession = await fixAgent.createSession({
               prompt: fixPrompt,
-              maxTurns: 10,
-              allowedTools: allowedToolsFix,
+              maxIterations: 10,
+              allowedTools: allowedToolsFix.split(','),
               logFile: fixLogFile,
               verbose,
-              permissionMode,
+              providerOptions: { permissionMode },
             });
 
-            await this.streamProcess(fixChild);
+            // Stream fix events to console
+            for await (const event of fixSession.events) {
+              this.handleAgentEvent(event);
+            }
             console.log('');
           }
 
@@ -481,36 +487,4 @@ Follow these steps:
 Be surgical in your changes - fix only what's broken.`;
   }
 
-  /**
-   * Streams process output to console.
-   *
-   * @param child - Child process to stream
-   */
-  private async streamProcess(child: ChildProcess): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Stream stdout
-      child.stdout?.on('data', (data: Buffer) => {
-        process.stdout.write(data);
-      });
-
-      // Stream stderr
-      child.stderr?.on('data', (data: Buffer) => {
-        process.stderr.write(data);
-      });
-
-      // Handle process completion
-      child.on('close', (code) => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Process exited with code ${code}`));
-        }
-      });
-
-      // Handle errors
-      child.on('error', (error) => {
-        reject(error);
-      });
-    });
-  }
 }

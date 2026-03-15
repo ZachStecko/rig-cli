@@ -1,6 +1,6 @@
 {
   "name": "rig-cli",
-  "version": "0.1.2",
+  "version": "0.1.1",
   "description": "AI agent orchestration framework for automating the software development lifecycle with Claude AI",
   "type": "module",
   "bin": {
@@ -43,6 +43,7 @@
     "demo-logger": "tsx demo-logger.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.76",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "ora": "^8.2.0",

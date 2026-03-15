@@ -56,10 +56,10 @@ export class CreateIssueCommand extends BaseCommand {
     }
 
     // Check if LLM service is available
-    const llmInstalled = await this.llm.isInstalled();
-    if (!llmInstalled) {
-      this.logger.error('Claude CLI is not installed. Install it with:');
-      console.log('  npm install -g @anthropic-ai/claude-code');
+    const llmAvailable = await this.llm.isAvailable();
+    if (!llmAvailable) {
+      this.logger.error('ANTHROPIC_API_KEY is not set.');
+      this.logger.info('Set your API key: export ANTHROPIC_API_KEY=sk-...');
       return;
     }
 

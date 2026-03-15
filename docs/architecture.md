@@ -40,7 +40,7 @@ rig-cli is a command-line orchestrator that coordinates multiple services to aut
 │                   Service Layer                              │
 │  - GitHubService: GitHub API operations                      │
 │  - GitService: Git operations via shell                      │
-│  - ClaudeService: Claude Code agent execution                │
+│  - ClaudeCodeAgent: Claude Code agent execution                │
 │  - StateManager: State file persistence                      │
 │  - TestRunnerService: Test execution and retry logic         │
 │  - PrTemplateService: PR body generation                     │
@@ -74,7 +74,7 @@ ShipCommand
     │       └─> GuardService
     │
     ├─> ImplementCommand
-    │       ├─> ClaudeService
+    │       ├─> ClaudeCodeAgent
     │       ├─> PromptBuilderService
     │       │       ├─> GitHubService
     │       │       ├─> GitService
@@ -103,7 +103,7 @@ ShipCommand
     │       └─> GuardService
     │
     └─> ReviewCommand
-            ├─> ClaudeService
+            ├─> ClaudeCodeAgent
             ├─> PromptBuilderService
             ├─> GitHubService
             ├─> StateManager
@@ -124,11 +124,11 @@ ShipCommand
 - Returns stdout/stderr
 - Used for both read (diff, log) and write (commit, push) operations
 
-**ClaudeService** (`src/services/claude.service.ts`)
-- Spawns Claude Code agent as child process
-- Streams JSON output for real-time feedback
-- Parameters: prompt, max_turns, allowed_tools, permission_mode
-- Returns when agent completes or hits turn limit
+**ClaudeCodeAgent** (`src/services/agents/claude-code.agent.ts`)
+- Uses `@anthropic-ai/claude-agent-sdk` for agentic sessions
+- Streams events via AsyncIterable for real-time feedback
+- Parameters: prompt, maxIterations, allowedTools, permissionMode
+- Requires ANTHROPIC_API_KEY environment variable
 
 **StateManager** (`src/services/state-manager.service.ts`)
 - Reads/writes `.rig-state.json`
@@ -265,48 +265,27 @@ Prevents working on issues that have been completed externally.
 
 **Agent Invocation:**
 ```typescript
-// In claude.service.ts
-async run(params: {
-  prompt: string;
-  maxTurns: number;
-  allowedTools: string;
-  logFile: string;
-  permissionMode: string;
-}): Promise<ChildProcess> {
-  const args = [
-    '--max-turns', params.maxTurns.toString(),
-    '--allowed-tools', params.allowedTools,
-    '--log-file', params.logFile,
-    '--permission-mode', params.permissionMode,
-    '--stream-json',
-    params.prompt
-  ];
-
-  return spawn('claude', args, { cwd: this.projectRoot });
-}
+// In claude-code.agent.ts
+const sdkStream = query({
+  prompt: config.prompt,
+  options: {
+    model: DEFAULT_MODEL,
+    maxTurns: config.maxIterations || DEFAULT_MAX_ITERATIONS,
+    allowedTools: config.allowedTools || Array.from(DEFAULT_ALLOWED_TOOLS),
+    permissionMode: permissionMode,
+  },
+});
 ```
 
 **Stream Processing:**
 ```typescript
-// In implement.command.ts
-child.stdout.on('data', (data: Buffer) => {
-  buffer += data.toString();
-  const lines = buffer.split('\n');
-  buffer = lines.pop() || '';
-
-  for (const line of lines) {
-    const parsed = JSON.parse(line);
-
-    if (parsed.type === 'tool_use') {
-      this.formatToolUse(parsed.name, parsed.input);
-    } else if (parsed.type === 'text') {
-      process.stdout.write(parsed.text);
-    }
-  }
-});
+// In implement.command.ts (via BaseCommand.handleAgentEvent)
+for await (const event of session.events) {
+  this.handleAgentEvent(event);
+}
 ```
 
-Real-time feedback as agent executes.
+Real-time feedback as agent executes via AsyncIterable events.
 
 ### Allowed Tools by Component
 
@@ -348,7 +327,7 @@ buildAllowedTools(component: ComponentType): string {
 const changesBefore = await this.git.getStatus();
 const commitBefore = await this.git.getCurrentCommit();
 
-await this.claude.run({...});
+await agent.createSession({...});
 
 const changesAfter = await this.git.getStatus();
 const commitAfter = await this.git.getCurrentCommit();
@@ -438,12 +417,16 @@ while (testAttempt < MAX_TEST_RETRIES) {
     testResult.output
   );
 
-  await this.claude.run({
+  const fixAgent = new ClaudeCodeAgent();
+  const fixSession = await fixAgent.createSession({
     prompt: fixPrompt,
-    maxTurns: this.config.getAgent().max_turns,
-    allowedTools: this.promptBuilder.buildAllowedTools(component),
-    logFile: `.rig-logs/fix-attempt-${testAttempt}.log`
+    maxIterations: this.config.getAgent().max_turns,
+    allowedTools: this.promptBuilder.buildAllowedTools(component).split(','),
+    logFile: `.rig-logs/fix-attempt-${testAttempt}.log`,
   });
+  for await (const event of fixSession.events) {
+    this.handleAgentEvent(event);
+  }
 }
 ```
 
