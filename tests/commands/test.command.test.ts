@@ -94,7 +94,7 @@ describe('TestCommand', () => {
 
       await command.execute();
 
-      expect(mockLogger.error).toHaveBeenCalledWith("No active pipeline. Run 'rig next' to start.");
+      expect(mockLogger.error).toHaveBeenCalledWith("No active pipeline. Run 'rig next' to start or use --issue <number>.");
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
@@ -110,7 +110,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -129,7 +128,7 @@ describe('TestCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend']);
+      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend'], 'Add user authentication', undefined);
       expect(mockTestRunner.runAllTests).toHaveBeenCalledWith('backend');
     });
 
@@ -145,10 +144,14 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
+      });
+      vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
+        number: 42,
+        title: 'Add user authentication',
+        labels: [{ name: 'backend' }],
       });
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
@@ -158,7 +161,6 @@ describe('TestCommand', () => {
 
       await command.execute({ component: 'frontend' });
 
-      expect(mockGitHub.viewIssue).not.toHaveBeenCalled();
       expect(mockPromptBuilder.detectComponent).not.toHaveBeenCalled();
       expect(mockTestRunner.runAllTests).toHaveBeenCalledWith('frontend');
     });
@@ -175,7 +177,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -201,7 +202,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -236,7 +236,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -279,7 +278,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'in_progress' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -320,7 +318,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'in_progress' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -361,7 +358,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -395,7 +391,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -434,7 +429,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -468,7 +462,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -503,7 +496,6 @@ describe('TestCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },

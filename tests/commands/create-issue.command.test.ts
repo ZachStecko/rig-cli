@@ -63,12 +63,12 @@ describe('CreateIssueCommand', () => {
 
     // Mock LLMService prototype methods
     mockLLMService = {
-      isInstalled: vi.fn(),
+      isAvailable: vi.fn(),
       structureIssue: vi.fn(),
     };
 
     // Replace LLMService prototype methods with mocks
-    vi.spyOn(LLMService.prototype, 'isInstalled').mockImplementation(mockLLMService.isInstalled);
+    vi.spyOn(LLMService.prototype, 'isAvailable').mockImplementation(mockLLMService.isAvailable);
     vi.spyOn(LLMService.prototype, 'structureIssue').mockImplementation(mockLLMService.structureIssue);
 
     command = new CreateIssueCommand(
@@ -148,7 +148,7 @@ describe('CreateIssueCommand', () => {
       expect(mockLogger.warn).toHaveBeenCalledWith('No description provided. Aborting.');
     });
 
-    it('checks if LLM service is installed', async () => {
+    it('checks if LLM service is available', async () => {
       const mockDescription = 'Add authentication feature';
       const mockRL = {
         on: vi.fn((event, callback) => {
@@ -166,12 +166,12 @@ describe('CreateIssueCommand', () => {
       vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
       vi.spyOn(process, 'once').mockImplementation(() => process as any);
       vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-      mockLLMService.isInstalled.mockResolvedValue(false);
+      mockLLMService.isAvailable.mockResolvedValue(false);
 
       await command.execute();
 
-      expect(mockLLMService.isInstalled).toHaveBeenCalled();
-      expect(mockLogger.error).toHaveBeenCalledWith('Claude CLI is not installed. Install it with:');
+      expect(mockLLMService.isAvailable).toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith('ANTHROPIC_API_KEY is not set.');
     });
 
     it('successfully creates an issue with structured content', async () => {
@@ -204,7 +204,7 @@ describe('CreateIssueCommand', () => {
       vi.spyOn(process, 'once').mockImplementation(() => process as any);
       vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
 
-      mockLLMService.isInstalled.mockResolvedValue(true);
+      mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue(mockStructured);
       vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
       vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
@@ -247,7 +247,7 @@ describe('CreateIssueCommand', () => {
       vi.spyOn(process, 'once').mockImplementation(() => process as any);
       vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
 
-      mockLLMService.isInstalled.mockResolvedValue(true);
+      mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue(mockStructured);
 
       await command.execute();
@@ -277,7 +277,7 @@ describe('CreateIssueCommand', () => {
       vi.spyOn(process, 'once').mockImplementation(() => process as any);
       vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
 
-      mockLLMService.isInstalled.mockResolvedValue(true);
+      mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockRejectedValue(mockError);
 
       await command.execute();
@@ -313,7 +313,7 @@ describe('CreateIssueCommand', () => {
       vi.spyOn(process, 'once').mockImplementation(() => process as any);
       vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
 
-      mockLLMService.isInstalled.mockResolvedValue(true);
+      mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue(mockStructured);
       vi.mocked(mockGitHub.createIssue).mockRejectedValue(mockError);
 

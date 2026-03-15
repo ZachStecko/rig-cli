@@ -51,7 +51,6 @@ agent:
       // All other values should be defaults
       expect(config.queue).toEqual(DEFAULT_CONFIG.queue);
       expect(config.test).toEqual(DEFAULT_CONFIG.test);
-      expect(config.demo).toEqual(DEFAULT_CONFIG.demo);
       expect(config.pr).toEqual(DEFAULT_CONFIG.pr);
     });
 
@@ -64,8 +63,6 @@ queue:
   default_component: backend
 test:
   require_new_tests: false
-demo:
-  enabled: false
 pr:
   draft: true
   reviewers:
@@ -80,7 +77,6 @@ pr:
       expect(config.queue.default_phase).toBe('Phase 1: MVP');
       expect(config.queue.default_component).toBe('backend');
       expect(config.test.require_new_tests).toBe(false);
-      expect(config.demo.enabled).toBe(false);
       expect(config.pr.draft).toBe(true);
       expect(config.pr.reviewers).toEqual(['alice', 'bob']);
     });
@@ -266,12 +262,13 @@ agent:
     });
   });
 
-  describe('getDemo', () => {
-    it('returns demo config section', async () => {
-      await configManager.load();
-      expect(configManager.getDemo()).toEqual(DEFAULT_CONFIG.demo);
-    });
-  });
+  // DISABLED: Demo feature disabled for redesign
+  // describe('getDemo', () => {
+  //   it('returns demo config section', async () => {
+  //     await configManager.load();
+  //     expect(configManager.getDemo()).toEqual(DEFAULT_CONFIG.demo);
+  //   });
+  // });
 
   describe('getPr', () => {
     it('returns PR config section', async () => {

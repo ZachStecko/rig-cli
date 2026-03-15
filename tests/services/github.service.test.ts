@@ -706,16 +706,24 @@ describe('GitHubService', () => {
 
   describe('prComment', () => {
     it('adds comment to PR', async () => {
-      mockExec.mockResolvedValue({
-        stdout: '',
+      // First call: repoName() fetches owner/repo
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo\n',
+        stderr: '',
+        exitCode: 0,
+      });
+      // Second call: gh api to post comment
+      mockExec.mockResolvedValueOnce({
+        stdout: '12345\n',
         stderr: '',
         exitCode: 0,
       });
 
-      await githubService.prComment(10, 'This looks good!');
+      const commentId = await githubService.prComment(10, 'This looks good!');
 
+      expect(commentId).toBe(12345);
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('gh pr comment 10 --body-file'),
+        expect.stringContaining('gh api repos/owner/repo/issues/10/comments'),
         { cwd: projectRoot }
       );
     });

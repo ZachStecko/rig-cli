@@ -52,6 +52,7 @@ describe('TestRunnerService', () => {
       config: vi.fn(),
       timing: vi.fn(),
       command: vi.fn(),
+      warn: vi.fn(),
     };
 
     testRunner = new TestRunnerService(projectRoot, mockGit, mockConfig, mockLogger);
@@ -138,7 +139,7 @@ describe('TestRunnerService', () => {
       );
     });
 
-    it('returns failure when linting fails', async () => {
+    it('treats lint warnings as non-fatal', async () => {
       mockExistsSync.mockReturnValue(true);
 
       mockExec.mockResolvedValueOnce({
@@ -155,8 +156,28 @@ describe('TestRunnerService', () => {
 
       const result = await testRunner.runBackendLint();
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
       expect(result.output).toContain('undefined: Foo');
+    });
+
+    it('returns failure when lint has actual errors', async () => {
+      mockExistsSync.mockReturnValue(true);
+
+      mockExec.mockResolvedValueOnce({
+        stdout: 'main.go:10:5: Error: unused variable',
+        stderr: '',
+        exitCode: 1,
+      });
+
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'main.go:15:3: error: undefined reference',
+        exitCode: 1,
+      });
+
+      const result = await testRunner.runBackendLint();
+
+      expect(result.success).toBe(false);
     });
   });
 
@@ -257,7 +278,7 @@ describe('TestRunnerService', () => {
       expect(result.skipped).toBe(true);
     });
 
-    it('runs eslint fix and npm run lint successfully', async () => {
+    it('runs eslint fix and eslint --quiet successfully', async () => {
       mockExistsSync.mockReturnValue(true);
 
       // eslint --fix
@@ -274,7 +295,7 @@ describe('TestRunnerService', () => {
         exitCode: 0,
       });
 
-      // npm run lint
+      // npx eslint --quiet
       mockExec.mockResolvedValueOnce({
         stdout: 'All files passed',
         stderr: '',
@@ -288,7 +309,7 @@ describe('TestRunnerService', () => {
         expect.stringContaining('npx eslint --fix'),
       );
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('npm run lint'),
+        expect.stringContaining('npx eslint --quiet'),
       );
     });
 
@@ -315,8 +336,34 @@ describe('TestRunnerService', () => {
 
       const result = await testRunner.runFrontendLint();
 
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
       expect(result.output).toContain('Unexpected console statement');
+    });
+
+    it('returns failure when lint has actual errors', async () => {
+      mockExistsSync.mockReturnValue(true);
+
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      mockExec.mockResolvedValueOnce({
+        stdout: 'src/App.tsx\n  10:5  Error  Unexpected token  @typescript-eslint/no-unused-vars',
+        stderr: '',
+        exitCode: 1,
+      });
+
+      const result = await testRunner.runFrontendLint();
+
+      expect(result.success).toBe(false);
     });
   });
 
@@ -692,7 +739,7 @@ describe('TestRunnerService', () => {
 
       expect(result.success).toBe(true);
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('npm run lint'),
+        expect.stringContaining('npx eslint --quiet'),
       );
       expect(mockExec).toHaveBeenCalledWith(
         expect.stringContaining('npm run build'),

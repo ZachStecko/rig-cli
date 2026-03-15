@@ -9,10 +9,8 @@ import { PrTemplateService } from '../services/pr-template.service.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
-import { ClaudeService } from '../services/claude.service.js';
+import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
 import { exec } from '../utils/shell.js';
-import { ChildProcess } from 'child_process';
-import { prettyPrintJson } from '../utils/format.js';
 
 /**
  * PrCommand creates or updates a pull request for the implemented issue.
@@ -23,7 +21,6 @@ import { prettyPrintJson } from '../utils/format.js';
 export class PrCommand extends BaseCommand {
   private prTemplate: PrTemplateService;
   private promptBuilder: PromptBuilderService;
-  private claude: ClaudeService;
 
   /**
    * Creates a new PrCommand instance.
@@ -45,13 +42,11 @@ export class PrCommand extends BaseCommand {
       this.config,
       this.logger
     );
-    this.claude = new ClaudeService();
     this.prTemplate = new PrTemplateService(
       this.github,
       this.git,
       templateEngine,
       testRunner,
-      this.claude,
       this.projectRoot || process.cwd()
     );
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
@@ -110,7 +105,6 @@ export class PrCommand extends BaseCommand {
             branch: 'pending',
             implement: 'pending',
             test: 'pending',
-            demo: 'pending',
             pr: 'pending',
             review: 'pending',
           },
@@ -135,7 +129,7 @@ export class PrCommand extends BaseCommand {
 
     // Get component using cached issue data
     const labels = issueData.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels);
+    const component = this.promptBuilder.detectComponent(labels, issueData.title, issueData.body);
 
     // Get current branch
     const currentBranch = await this.git.currentBranch();
@@ -341,17 +335,21 @@ export class PrCommand extends BaseCommand {
     const logFile = `${this.projectRoot}/.rig-logs/pr-feedback-${prNumber}.log`;
 
     try {
-      const child = await this.claude.run({
+      const feedbackAgent = new ClaudeCodeAgent();
+      const feedbackSession = await feedbackAgent.createSession({
         prompt: fixPrompt,
-        maxTurns,
-        allowedTools: 'all',
+        maxIterations: maxTurns,
         logFile,
         verbose,
-        permissionMode,
+        providerOptions: { permissionMode },
       });
 
-      // Stream the process output
-      await this.streamProcess(child, verbose);
+      // Stream events (optionally show verbose output)
+      for await (const event of feedbackSession.events) {
+        if (verbose && event.type === 'text') {
+          process.stdout.write(event.content);
+        }
+      }
     } catch (error) {
       this.logger.error(`Agent failed: ${(error as Error).message}`);
       process.exit(1);
@@ -385,211 +383,5 @@ Please review the changes.`;
     // Get repository name and display PR URL
     const repoName = await this.github.repoName();
     console.log(`  https://github.com/${repoName}/pull/${prNumber}`);
-  }
-
-  /**
-   * Streams Claude Code process output with proper JSON parsing and formatting.
-   *
-   * @param child - ChildProcess to stream
-   * @param verbose - Whether to show verbose output
-   */
-  private async streamProcess(child: ChildProcess, verbose: boolean = false): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let buffer = '';
-
-      // Stream stdout with JSON parsing
-      child.stdout?.on('data', (data: Buffer) => {
-        buffer += data.toString();
-        const lines = buffer.split('\n');
-
-        // Keep the last incomplete line in the buffer
-        buffer = lines.pop() || '';
-
-        // Process complete lines
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          try {
-            // Try to parse as JSON (stream-json format)
-            const parsed = JSON.parse(line);
-
-            // Handle assistant messages with tool uses
-            if (parsed.type === 'assistant' && parsed.message?.content) {
-              for (const item of parsed.message.content) {
-                if (item.type === 'tool_use') {
-                  this.formatToolUse(item.name, item.input);
-                } else if (item.type === 'text' && item.text) {
-                  process.stdout.write(item.text);
-                }
-              }
-            }
-            // Handle user messages (errors, results)
-            else if (parsed.type === 'user' && parsed.message?.content) {
-              for (const item of parsed.message.content) {
-                if (item.type === 'tool_result' && item.is_error) {
-                  // Warn about permission errors instead of silently ignoring them
-                  if (item.content?.includes('requested permissions')) {
-                    this.logger.warn('Permission required - operation skipped');
-                  } else {
-                    this.logger.error(item.content || 'Tool error');
-                  }
-                }
-              }
-            }
-            // Handle direct tool_use format (fallback)
-            else if (parsed.type === 'tool_use') {
-              const toolName = parsed.name || parsed.tool || 'unknown';
-              this.formatToolUse(toolName, parsed.input);
-            }
-            // Handle text messages
-            else if (parsed.type === 'text' || parsed.text) {
-              const text = parsed.text || parsed.content || '';
-              if (text.trim()) {
-                process.stdout.write(text);
-              }
-            }
-            // Handle errors
-            else if (parsed.type === 'error') {
-              this.logger.error(parsed.message || JSON.stringify(parsed));
-            }
-            // Handle stream events
-            else if (parsed.type === 'stream_event') {
-              if (verbose && parsed.event) {
-                const eventType = parsed.event.type || 'unknown';
-                this.logger.dim(`  Stream: ${eventType}`);
-              }
-            }
-            // Handle system messages
-            else if (parsed.type === 'system') {
-              if (verbose) {
-                const msg = parsed.message || parsed.content || 'System event';
-                this.logger.dim(`System: ${msg}`);
-              }
-            }
-            // Handle result messages
-            else if (parsed.type === 'result') {
-              if (verbose) {
-                const status = parsed.status || 'completed';
-                this.logger.dim(`Result: ${status}`);
-              }
-            }
-            // Handle task progress
-            else if (parsed.type === 'task_progress') {
-              if (verbose) {
-                const task = parsed.task || parsed.description || 'task';
-                const progress = parsed.progress !== undefined ? ` (${Math.round(parsed.progress * 100)}%)` : '';
-                this.logger.dim(`  Progress: ${task}${progress}`);
-              }
-            }
-            // Handle tool use notifications
-            else if (parsed.type === 'tool_use_notification') {
-              if (verbose) {
-                const tool = parsed.tool || parsed.name || 'unknown';
-                const status = parsed.status || '';
-                this.logger.dim(`  Tool: ${tool}${status ? ` (${status})` : ''}`);
-              }
-            }
-            // Handle thinking (verbose only)
-            else if (parsed.type === 'thinking') {
-              if (verbose && parsed.content) {
-                this.logger.dim(`  [Thinking] ${parsed.content.substring(0, 80)}${parsed.content.length > 80 ? '...' : ''}`);
-              }
-            }
-            // Handle debug (verbose only)
-            else if (parsed.type === 'debug') {
-              if (verbose) {
-                const category = parsed.category || '';
-                const msg = parsed.message || JSON.stringify(parsed);
-                this.logger.dim(`  [Debug${category ? ':' + category : ''}] ${msg}`);
-              }
-            }
-            // Handle session messages (verbose only)
-            else if (parsed.type === 'session') {
-              if (verbose) {
-                const status = parsed.status || 'active';
-                this.logger.dim(`  Session: ${status}`);
-              }
-            }
-            // Skip ping events (keepalive)
-            else if (parsed.type === 'ping') {
-              // Silently skip
-            }
-            // All other message types - silently skip (already handled or internal)
-            else {
-              // Silently skip unknown message types
-            }
-          } catch (e) {
-            prettyPrintJson(line);
-          }
-        }
-      });
-
-      // Stream stderr as-is
-      child.stderr?.on('data', (data: Buffer) => {
-        process.stderr.write(data);
-      });
-
-      // Handle process completion
-      child.on('close', (code) => {
-        // Process any remaining buffer
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer);
-            if (parsed.type === 'text' || parsed.text) {
-              const text = parsed.text || parsed.content || '';
-              if (text.trim()) process.stdout.write(text);
-            }
-          } catch (e) {
-            process.stdout.write(buffer);
-          }
-        }
-
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Process exited with code ${code}`));
-        }
-      });
-
-      // Handle errors
-      child.on('error', (error) => {
-        reject(error);
-      });
-    });
-  }
-
-  /**
-   * Formats tool usage messages in a human-readable way.
-   *
-   * @param toolName - Name of the tool being used
-   * @param input - Tool input parameters
-   */
-  private formatToolUse(toolName: string, input: any): void {
-    switch (toolName) {
-      case 'Read':
-        this.logger.dim(`  Reading: ${input.file_path || 'file'}`);
-        break;
-      case 'Write':
-        this.logger.dim(`  Writing: ${input.file_path || 'file'}`);
-        break;
-      case 'Edit':
-        this.logger.dim(`  Editing: ${input.file_path || 'file'}`);
-        break;
-      case 'Bash':
-        const cmd = input.command || input.cmd || 'command';
-        // Truncate long commands
-        const displayCmd = cmd.length > 60 ? cmd.substring(0, 60) + '...' : cmd;
-        this.logger.dim(`  Running: ${displayCmd}`);
-        break;
-      case 'Glob':
-        this.logger.dim(`  Searching files: ${input.pattern || '*'}`);
-        break;
-      case 'Grep':
-        this.logger.dim(`  Searching code: "${input.pattern || ''}"`);
-        break;
-      default:
-        // For unknown tools, show minimal info
-        this.logger.dim(`  Using tool: ${toolName}`);
-    }
   }
 }

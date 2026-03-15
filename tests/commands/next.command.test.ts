@@ -177,7 +177,6 @@ describe('NextCommand', () => {
           branch: 'pending',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },

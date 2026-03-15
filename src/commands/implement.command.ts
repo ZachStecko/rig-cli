@@ -5,12 +5,10 @@ import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
-import { ClaudeService } from '../services/claude.service.js';
+import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
-import { ChildProcess } from 'child_process';
 import * as path from 'path';
-import { prettyPrintJson } from '../utils/format.js';
 
 /**
  * ImplementCommand runs Claude Code agent to implement an issue.
@@ -20,7 +18,6 @@ import { prettyPrintJson } from '../utils/format.js';
  * Logs output and updates pipeline state.
  */
 export class ImplementCommand extends BaseCommand {
-  private claude: ClaudeService;
   private promptBuilder: PromptBuilderService;
 
   /**
@@ -36,7 +33,6 @@ export class ImplementCommand extends BaseCommand {
     projectRoot?: string
   ) {
     super(logger, config, state, git, github, guard, projectRoot);
-    this.claude = new ClaudeService();
     const templateEngine = new TemplateEngine();
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
   }
@@ -85,7 +81,6 @@ export class ImplementCommand extends BaseCommand {
             branch: 'pending',
             implement: 'pending',
             test: 'pending',
-            demo: 'pending',
             pr: 'pending',
             review: 'pending',
           },
@@ -105,11 +100,13 @@ export class ImplementCommand extends BaseCommand {
       issueNumber = state.issue_number;
     }
 
-    // Check Claude is installed (skip if dry-run)
+    // Check Claude agent is available (skip if dry-run)
     if (!options?.dryRun) {
-      const claudeInstalled = await this.claude.isInstalled();
-      if (!claudeInstalled) {
-        this.logger.error('Claude CLI is not installed. Install it first: npm install -g @anthropics/claude-cli');
+      const agent = new ClaudeCodeAgent();
+      const available = await agent.isAvailable();
+      if (!available) {
+        this.logger.error('ANTHROPIC_API_KEY environment variable is not set.');
+        this.logger.info('Set your API key: export ANTHROPIC_API_KEY=sk-...');
         process.exit(1);
         return; // For testing
       }
@@ -143,7 +140,7 @@ export class ImplementCommand extends BaseCommand {
     // Get issue for component detection
     const issue = await this.github.viewIssue(state.issue_number);
     const labels = issue.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels);
+    const component = this.promptBuilder.detectComponent(labels, issue.title, issue.body);
     const allowedTools = this.promptBuilder.buildAllowedTools(component);
 
     // Get max turns, verbose, and permission mode from config
@@ -188,17 +185,21 @@ export class ImplementCommand extends BaseCommand {
       const changesBefore = await this.git.getStatus();
       const commitBefore = await this.git.getCurrentCommit();
 
-      const child = await this.claude.run({
+      // Create agent and session
+      const agent = new ClaudeCodeAgent();
+      const session = await agent.createSession({
         prompt,
-        maxTurns,
-        allowedTools,
+        maxIterations: maxTurns,
+        allowedTools: allowedTools.split(','),
         logFile,
         verbose,
-        permissionMode,
+        providerOptions: { permissionMode },
       });
 
-      // Stream output to console
-      await this.streamProcess(child);
+      // Stream events to console
+      for await (const event of session.events) {
+        this.handleAgentEvent(event);
+      }
 
       // Verify that changes were made (either uncommitted files or new commits)
       const changesAfter = await this.git.getStatus();
@@ -259,150 +260,4 @@ export class ImplementCommand extends BaseCommand {
     }
   }
 
-  /**
-   * Streams process output to console.
-   *
-   * Parses stream-json output and formats it for human readability.
-   * Filters out verbose tool call JSON and shows clean progress messages.
-   *
-   * @param child - Child process to stream
-   */
-  private async streamProcess(child: ChildProcess): Promise<void> {
-    return new Promise((resolve, reject) => {
-      let buffer = '';
-
-      // Stream stdout with JSON parsing
-      child.stdout?.on('data', (data: Buffer) => {
-        buffer += data.toString();
-        const lines = buffer.split('\n');
-
-        // Keep the last incomplete line in the buffer
-        buffer = lines.pop() || '';
-
-        // Process complete lines
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          try {
-            // Try to parse as JSON (stream-json format)
-            const parsed = JSON.parse(line);
-
-            // Handle assistant messages with tool uses
-            if (parsed.type === 'assistant' && parsed.message?.content) {
-              for (const item of parsed.message.content) {
-                if (item.type === 'tool_use') {
-                  this.formatToolUse(item.name, item.input);
-                } else if (item.type === 'text' && item.text) {
-                  process.stdout.write(item.text);
-                }
-              }
-            }
-            // Handle user messages (errors, results)
-            else if (parsed.type === 'user' && parsed.message?.content) {
-              for (const item of parsed.message.content) {
-                if (item.type === 'tool_result' && item.is_error) {
-                  // Warn about permission errors instead of silently ignoring them
-                  if (item.content?.includes('requested permissions')) {
-                    this.logger.warn('Permission required - operation skipped');
-                  } else {
-                    this.logger.error(item.content || 'Tool error');
-                  }
-                }
-              }
-            }
-            // Handle direct tool_use format (fallback)
-            else if (parsed.type === 'tool_use') {
-              const toolName = parsed.name || parsed.tool || 'unknown';
-              this.formatToolUse(toolName, parsed.input);
-            }
-            // Handle text messages
-            else if (parsed.type === 'text' || parsed.text) {
-              const text = parsed.text || parsed.content || '';
-              if (text.trim()) {
-                process.stdout.write(text);
-              }
-            }
-            // Handle errors
-            else if (parsed.type === 'error') {
-              this.logger.error(parsed.message || JSON.stringify(parsed));
-            }
-            // Skip thinking, debug, and other internal messages
-            else if (parsed.type !== 'thinking' && parsed.type !== 'debug' && parsed.type !== 'session') {
-              // Unknown format - pretty-print if it's JSON
-              prettyPrintJson(line);
-            }
-          } catch (e) {
-            prettyPrintJson(line);
-          }
-        }
-      });
-
-      // Stream stderr as-is
-      child.stderr?.on('data', (data: Buffer) => {
-        process.stderr.write(data);
-      });
-
-      // Handle process completion
-      child.on('close', (code) => {
-        // Process any remaining buffer
-        if (buffer.trim()) {
-          try {
-            const parsed = JSON.parse(buffer);
-            if (parsed.type === 'text' || parsed.text) {
-              const text = parsed.text || parsed.content || '';
-              if (text.trim()) process.stdout.write(text);
-            }
-          } catch (e) {
-            process.stdout.write(buffer);
-          }
-        }
-
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`Process exited with code ${code}`));
-        }
-      });
-
-      // Handle errors
-      child.on('error', (error) => {
-        reject(error);
-      });
-    });
-  }
-
-  /**
-   * Formats tool usage messages in a human-readable way.
-   *
-   * @param toolName - Name of the tool being used
-   * @param input - Tool input parameters
-   */
-  private formatToolUse(toolName: string, input: any): void {
-    switch (toolName) {
-      case 'Read':
-        this.logger.dim(`  Reading: ${input.file_path || 'file'}`);
-        break;
-      case 'Write':
-        this.logger.dim(`  Writing: ${input.file_path || 'file'}`);
-        break;
-      case 'Edit':
-        this.logger.dim(`  Editing: ${input.file_path || 'file'}`);
-        break;
-      case 'Bash':
-        const cmd = input.command || input.cmd || 'command';
-        // Truncate long commands
-        const displayCmd = cmd.length > 60 ? cmd.substring(0, 60) + '...' : cmd;
-        this.logger.dim(`  Running: ${displayCmd}`);
-        break;
-      case 'Glob':
-        this.logger.dim(`  Searching files: ${input.pattern || '*'}`);
-        break;
-      case 'Grep':
-        this.logger.dim(`  Searching code: "${input.pattern || ''}"`);
-        break;
-      default:
-        // For unknown tools, show minimal info
-        this.logger.dim(`  Using tool: ${toolName}`);
-    }
-  }
 }
