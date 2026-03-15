@@ -284,6 +284,17 @@ export class GitService {
   }
 
   /**
+   * Gets the repository root directory (git toplevel).
+   *
+   * @returns Absolute path to the repository root
+   * @throws Error if not in a git repository
+   */
+  async repoRoot(): Promise<string> {
+    const result = await this.git('rev-parse --show-toplevel');
+    return result.stdout.trim();
+  }
+
+  /**
    * Gets the name of the master branch (main or master).
    * Checks which one exists in the repository.
    *

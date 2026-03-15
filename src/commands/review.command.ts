@@ -205,10 +205,12 @@ export class ReviewCommand extends BaseCommand {
     const prompt = await this.promptBuilder.assembleReviewPrompt(issueNumber);
 
     // Extract review file path from prompt (it's in the template)
+    // Resolve relative to git repo root since the agent runs from there
+    const repoRoot = await this.git.repoRoot();
     const reviewFilePathMatch = prompt.match(/`(\.rig-reviews\/issue-\d+\/review-[^`]+\.md)`/);
     const reviewFilePath = reviewFilePathMatch
-      ? path.join(this.projectRoot || process.cwd(), reviewFilePathMatch[1])
-      : path.join(this.projectRoot || process.cwd(), `.rig-reviews/issue-${issueNumber}/review-latest.md`);
+      ? path.join(repoRoot, reviewFilePathMatch[1])
+      : path.join(repoRoot, `.rig-reviews/issue-${issueNumber}/review-latest.md`);
 
     // Get max turns, verbose, and permission mode from config
     const rigConfig = this.config.get();
@@ -226,9 +228,9 @@ export class ReviewCommand extends BaseCommand {
     // Full tools for fixes
     const allowedToolsFix = this.promptBuilder.buildAllowedTools(component);
 
-    // Prepare log file
+    // Prepare log file (use repo root so paths are consistent)
     const logFile = path.join(
-      this.projectRoot || process.cwd(),
+      repoRoot,
       '.rig-logs',
       `review-issue-${issueNumber}.log`
     );

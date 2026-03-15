@@ -87,6 +87,7 @@ describe('ReviewCommand', () => {
 
     mockGit = {
       currentBranch: vi.fn(),
+      repoRoot: vi.fn().mockResolvedValue('/test/project'),
     } as any;
 
     mockGitHub = {
