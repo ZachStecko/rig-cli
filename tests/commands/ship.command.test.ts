@@ -183,7 +183,6 @@ describe('ShipCommand', () => {
           branch: 'completed',
           implement: 'completed',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -217,7 +216,6 @@ describe('ShipCommand', () => {
           branch: 'completed',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -227,33 +225,6 @@ describe('ShipCommand', () => {
 
       expect((command as any).implementCommand.execute).toHaveBeenCalled();
       expect((command as any).testCommand.execute).toHaveBeenCalled();
-      expect((command as any).demoCommand.execute).toHaveBeenCalled();
-      expect((command as any).prCommand.execute).toHaveBeenCalled();
-      expect((command as any).reviewCommand.execute).toHaveBeenCalled();
-    });
-
-    it('resumes from demo stage', async () => {
-      vi.mocked(mockState.exists).mockResolvedValue(true);
-      vi.mocked(mockState.read).mockResolvedValue({
-        issue_number: 42,
-        issue_title: 'Add user dashboard',
-        branch: 'issue-42-add-user-dashboard',
-        stage: 'demo',
-        stages: {
-          pick: 'completed',
-          branch: 'completed',
-          implement: 'completed',
-          test: 'completed',
-          demo: 'pending',
-          pr: 'pending',
-          review: 'pending',
-        },
-      });
-
-      await command.execute();
-
-      expect((command as any).implementCommand.execute).not.toHaveBeenCalled();
-      expect((command as any).testCommand.execute).not.toHaveBeenCalled();
       expect((command as any).demoCommand.execute).toHaveBeenCalled();
       expect((command as any).prCommand.execute).toHaveBeenCalled();
       expect((command as any).reviewCommand.execute).toHaveBeenCalled();
@@ -271,7 +242,6 @@ describe('ShipCommand', () => {
           branch: 'completed',
           implement: 'completed',
           test: 'completed',
-          demo: 'completed',
           pr: 'pending',
           review: 'pending',
         },
@@ -298,7 +268,6 @@ describe('ShipCommand', () => {
           branch: 'completed',
           implement: 'completed',
           test: 'completed',
-          demo: 'completed',
           pr: 'completed',
           review: 'pending',
         },
@@ -325,7 +294,6 @@ describe('ShipCommand', () => {
           branch: 'completed',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },
@@ -355,7 +323,6 @@ describe('ShipCommand', () => {
           branch: 'completed',
           implement: 'pending',
           test: 'pending',
-          demo: 'pending',
           pr: 'pending',
           review: 'pending',
         },

@@ -1,7 +1,4 @@
-import { ChildProcess } from 'child_process';
-import { tmpdir } from 'os';
-import { join } from 'path';
-import { ClaudeService } from '../claude.service.js';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import { CodeAgent } from './base.agent.js';
 import {
   AgentCapabilities,
@@ -20,10 +17,10 @@ const VALID_PERMISSION_MODES = ['default', 'bypassPermissions', 'acceptEdits', '
 type PermissionMode = typeof VALID_PERMISSION_MODES[number];
 
 /**
- * Claude Code CLI agent implementation.
+ * Claude Agent SDK implementation.
  *
- * Wraps the existing ClaudeService to provide the CodeAgent interface.
- * This agent uses the Claude Code CLI (`claude` command) for agentic sessions.
+ * Uses the official @anthropic-ai/claude-agent-sdk for agentic sessions.
+ * Requires ANTHROPIC_API_KEY environment variable.
  */
 export class ClaudeCodeAgent extends CodeAgent {
   readonly name = 'Claude Code';
@@ -38,53 +35,57 @@ export class ClaudeCodeAgent extends CodeAgent {
     webSearch: true,
   };
 
-  private claudeService: ClaudeService;
   private sessionCounter = 0;
 
-  constructor() {
-    super();
-    this.claudeService = new ClaudeService();
-  }
-
   /**
-   * Check if Claude Code CLI is installed and available.
+   * Check if Claude Agent SDK is available (API key is set).
    */
   async isAvailable(): Promise<boolean> {
-    return this.claudeService.isInstalled();
+    return !!process.env.ANTHROPIC_API_KEY;
   }
 
   /**
-   * Check Claude Code authentication status.
+   * Check Claude Agent SDK authentication status.
    */
   async checkAuth(): Promise<AuthStatus> {
-    // Check if API key is set
     if (process.env.ANTHROPIC_API_KEY) {
       return { authenticated: true, method: 'api_key' };
     }
 
-    // Check if Claude CLI is installed and can run (implies logged in via subscription)
-    const installed = await this.isAvailable();
-    if (installed) {
-      return { authenticated: true, method: 'subscription' };
-    }
-
     return {
       authenticated: false,
-      error: 'Not authenticated. Run `claude login` or set ANTHROPIC_API_KEY',
+      error: 'Not authenticated. Set ANTHROPIC_API_KEY environment variable',
     };
   }
 
   /**
-   * Simple prompt/response using Claude Code CLI.
+   * Simple prompt/response using Claude Agent SDK.
    */
-  async prompt(prompt: string): Promise<string> {
-    return this.claudeService.prompt(prompt);
+  async prompt(promptText: string): Promise<string> {
+    const responses: string[] = [];
+
+    for await (const message of query({
+      prompt: promptText,
+      options: {
+        model: 'claude-sonnet-4-5-20250929',
+        maxTurns: 1,
+        allowedTools: [],
+      },
+    })) {
+      if (message.type === 'assistant' && message.message?.content) {
+        for (const block of message.message.content) {
+          if ('text' in block) {
+            responses.push(block.text);
+          }
+        }
+      }
+    }
+
+    return responses.join('\n');
   }
 
   /**
-   * Create a new Claude Code session.
-   *
-   * This spawns the `claude` CLI process and streams events.
+   * Create a new Claude Agent SDK session.
    */
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
     // Validate and map permission mode
@@ -95,27 +96,32 @@ export class ClaudeCodeAgent extends CodeAgent {
     // Generate unique session ID
     const sessionId = `claude-${Date.now()}-${this.sessionCounter++}`;
 
-    // Generate session-specific log file
-    const logFile = config.logFile || join(tmpdir(), `claude-agent-${sessionId}.log`);
+    // Track state for cancellation and completion
+    let cancelled = false;
+    let completionPromise: Promise<AgentResult> | null = null;
 
-    // Map to ClaudeRunOptions
-    const child = await this.claudeService.run({
+    // Start SDK query
+    const sdkStream = query({
       prompt: config.prompt,
-      maxTurns: config.maxIterations || DEFAULT_MAX_ITERATIONS,
-      allowedTools: config.allowedTools?.join(',') || DEFAULT_ALLOWED_TOOLS.join(','),
-      logFile,
-      verbose: config.verbose,
-      permissionMode,
+      options: {
+        model: 'claude-sonnet-4-5-20250929',
+        maxTurns: config.maxIterations || DEFAULT_MAX_ITERATIONS,
+        allowedTools: config.allowedTools || Array.from(DEFAULT_ALLOWED_TOOLS),
+        permissionMode: permissionMode as any,
+      },
     });
 
-    // Track completion promise to avoid duplicate event handlers
-    const completionPromise = this.waitForCompletion(child, sessionId, config.workingDirectory);
+    // Create completion promise
+    completionPromise = this.waitForCompletion(sdkStream, sessionId, config.workingDirectory);
 
     return {
       id: sessionId,
-      events: this.adaptStream(child),
-      wait: () => completionPromise,
-      cancel: () => this.cancelSession(child),
+      events: this.adaptStream(sdkStream, () => cancelled),
+      wait: () => completionPromise!,
+      cancel: async () => {
+        cancelled = true;
+        // SDK doesn't have a cancel method, so we rely on the adaptStream to stop yielding
+      },
     };
   }
 
@@ -136,69 +142,63 @@ export class ClaudeCodeAgent extends CodeAgent {
   }
 
   /**
-   * Adapt Claude Code's stream-json format to AgentEvent.
-   *
-   * Claude Code emits events like:
-   * {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "Read", "input": {...}}]}}
+   * Adapt Claude Agent SDK messages to AgentEvent format.
    */
-  private async *adaptStream(child: ChildProcess): AsyncIterableIterator<AgentEvent> {
-    let buffer = '';
-
-    if (!child.stdout) {
-      yield { type: 'error', message: 'No stdout available', fatal: true };
-      return;
-    }
-
-    // Handle process errors
-    let processError: Error | null = null;
-    child.once('error', (error) => {
-      processError = error;
-    });
-
-    // Track process exit
-    let processExited = false;
-    let exitCode: number | null = null;
-    child.once('exit', (code) => {
-      processExited = true;
-      exitCode = code;
-    });
-
-    // Handle stdout errors
-    child.stdout.once('error', (error) => {
-      processError = error;
-    });
-
+  private async *adaptStream(
+    sdkStream: AsyncIterable<any>,
+    isCancelled: () => boolean
+  ): AsyncIterableIterator<AgentEvent> {
     try {
-      for await (const chunk of child.stdout) {
-        // Check if process errored
-        if (processError) {
+      for await (const message of sdkStream) {
+        // Check if cancelled
+        if (isCancelled()) {
+          yield {
+            type: 'complete',
+            success: false,
+          };
+          return;
+        }
+
+        // Map SDK messages to AgentEvent format
+        if (message.type === 'assistant' && message.message?.content) {
+          for (const block of message.message.content) {
+            if ('text' in block) {
+              yield {
+                type: 'text',
+                content: block.text,
+              };
+            } else if ('thinking' in block) {
+              yield {
+                type: 'thinking',
+                content: block.thinking,
+              };
+            } else if ('name' in block && 'input' in block) {
+              // tool_use block
+              yield {
+                type: 'tool_use',
+                tool: block.name,
+                input: block.input,
+              };
+            }
+          }
+        } else if (message.type === 'tool_result') {
+          yield {
+            type: 'tool_result',
+            tool: message.toolName || 'unknown',
+            output: message.content,
+            error: message.isError ? String(message.content) : undefined,
+          };
+        } else if (message.type === 'error') {
           yield {
             type: 'error',
-            message: `Process error: ${String(processError)}`,
-            fatal: true,
+            message: message.error?.message || 'Unknown error',
+            fatal: message.fatal !== false,
           };
-          break;
-        }
-
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          const event = this.parseEvent(line);
-          if (event) {
-            yield event;
-          }
-        }
-      }
-
-      // Process any remaining buffer
-      if (buffer.trim()) {
-        const event = this.parseEvent(buffer);
-        if (event) {
-          yield event;
+        } else if (message.type === 'result') {
+          yield {
+            type: 'complete',
+            success: message.subtype === 'success',
+          };
         }
       }
     } catch (error) {
@@ -207,152 +207,64 @@ export class ClaudeCodeAgent extends CodeAgent {
         message: error instanceof Error ? error.message : 'Stream processing error',
         fatal: true,
       };
+      yield {
+        type: 'complete',
+        success: false,
+      };
     }
-
-    // Wait for process to exit if it hasn't already
-    if (!processExited) {
-      await new Promise<void>((resolve) => {
-        child.once('exit', (code) => {
-          exitCode = code;
-          resolve();
-        });
-      });
-    }
-
-    // Emit completion event
-    yield {
-      type: 'complete',
-      success: exitCode === 0,
-    };
   }
 
   /**
-   * Parse a single line of Claude Code JSON output into an AgentEvent.
-   */
-  private parseEvent(line: string): AgentEvent | null {
-    try {
-      const parsed = JSON.parse(line);
-
-      // Handle different Claude Code event types
-      if (parsed.type === 'assistant' && parsed.message?.content) {
-        for (const item of parsed.message.content) {
-          if (item.type === 'tool_use') {
-            return {
-              type: 'tool_use',
-              tool: item.name ?? 'unknown',
-              input: item.input,
-            };
-          } else if (item.type === 'text') {
-            return {
-              type: 'text',
-              content: item.text ?? '',
-            };
-          } else if (item.type === 'thinking') {
-            return {
-              type: 'thinking',
-              content: item.text ?? '',
-            };
-          }
-        }
-      } else if (parsed.type === 'tool_result') {
-        return {
-          type: 'tool_result',
-          tool: parsed.tool_name ?? 'unknown',
-          output: parsed.content,
-          error: parsed.is_error ? (typeof parsed.content === 'string' ? parsed.content : JSON.stringify(parsed.content)) : undefined,
-        };
-      } else if (parsed.type === 'error') {
-        return {
-          type: 'error',
-          message: parsed.message ?? 'Unknown error',
-          fatal: parsed.fatal === true, // Default to non-fatal
-        };
-      } else if (parsed.type === 'progress') {
-        return {
-          type: 'progress',
-          step: parsed.step ?? 0,
-          total: parsed.total,
-        };
-      }
-    } catch (parseError) {
-      // Silently ignore malformed JSON (shouldn't happen with stream-json format)
-      return null;
-    }
-
-    return null;
-  }
-
-  /**
-   * Wait for Claude Code process to complete and return result.
-   *
-   * Uses `once` to avoid duplicate event handlers and detects file changes via git.
+   * Wait for SDK session to complete and return result.
    */
   private async waitForCompletion(
-    child: ChildProcess,
+    sdkStream: AsyncIterable<any>,
     sessionId: string,
     workingDirectory?: string
   ): Promise<AgentResult> {
-    return new Promise((resolve, reject) => {
-      // Use 'once' to prevent duplicate handlers
-      child.once('exit', async (code) => {
-        const success = code === 0;
+    let success = false;
+    let error: string | undefined;
 
-        // Detect files changed (if in a git repo)
-        let filesChanged: string[] = [];
-        if (workingDirectory) {
-          try {
-            const { exec } = await import('../../utils/shell.js');
-            const originalCwd = process.cwd();
-            process.chdir(workingDirectory);
-
-            const result = await exec('git diff --name-only HEAD');
-
-            process.chdir(originalCwd);
-
-            if (result.exitCode === 0 && result.stdout) {
-              filesChanged = result.stdout
-                .split('\n')
-                .filter((line: string) => line.trim())
-                .map((line: string) => line.trim());
-            }
-          } catch {
-            // Ignore git errors - not in a repo or git not available
-          }
+    // Consume the stream to get the final result
+    for await (const message of sdkStream) {
+      if (message.type === 'result') {
+        success = message.subtype === 'success';
+        if (!success && message.error) {
+          error = message.error.message || 'Session failed';
         }
+      } else if (message.type === 'error') {
+        error = message.error?.message || 'Unknown error';
+      }
+    }
 
-        resolve({
-          success,
-          filesChanged,
-          summary: success ? `Session ${sessionId} completed successfully` : `Session ${sessionId} failed`,
-          error: code !== 0 ? `Process exited with code ${code}` : undefined,
-        });
-      });
+    // Detect files changed (if in a git repo)
+    let filesChanged: string[] = [];
+    if (workingDirectory) {
+      try {
+        const { exec } = await import('../../utils/shell.js');
+        const originalCwd = process.cwd();
+        process.chdir(workingDirectory);
 
-      child.once('error', (error) => {
-        reject(new Error(`Process error: ${error.message}`));
-      });
-    });
-  }
+        const result = await exec('git diff --name-only HEAD');
 
-  /**
-   * Cancel a running Claude Code session.
-   *
-   * Sends SIGTERM first, then SIGKILL after 5 seconds if process doesn't exit.
-   */
-  private async cancelSession(child: ChildProcess): Promise<void> {
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        // Force kill if still running after 5 seconds
-        child.kill('SIGKILL');
-      }, 5000);
+        process.chdir(originalCwd);
 
-      child.once('exit', () => {
-        clearTimeout(timeout);
-        resolve();
-      });
+        if (result.exitCode === 0 && result.stdout) {
+          filesChanged = result.stdout
+            .split('\n')
+            .filter((line: string) => line.trim())
+            .map((line: string) => line.trim());
+        }
+      } catch {
+        // Ignore git errors - not in a repo or git not available
+      }
+    }
 
-      // Send graceful termination signal
-      child.kill('SIGTERM');
-    });
+    return {
+      success,
+      filesChanged,
+      summary: success ? `Session ${sessionId} completed successfully` : `Session ${sessionId} failed`,
+      error,
+    };
   }
 }

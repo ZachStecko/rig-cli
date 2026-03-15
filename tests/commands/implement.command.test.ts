@@ -14,20 +14,9 @@ const createMockRigConfig = (overrides?: Partial<RigConfig>): RigConfig => ({
   agent: { max_turns: 20 },
   queue: { default_phase: null, default_component: null },
   test: { require_new_tests: true },
-  // demo: { enabled: false }, // DISABLED: Demo feature disabled for redesign
   pr: { draft: false, reviewers: [] },
   ...overrides,
 });
-
-// Mock ClaudeService
-const mockClaude = {
-  isInstalled: vi.fn(),
-  run: vi.fn(),
-};
-
-vi.mock('../../src/services/claude.service.js', () => ({
-  ClaudeService: vi.fn(() => mockClaude),
-}));
 
 // Mock PromptBuilderService
 const mockPromptBuilder = {
@@ -38,6 +27,16 @@ const mockPromptBuilder = {
 
 vi.mock('../../src/services/prompt-builder.service.js', () => ({
   PromptBuilderService: vi.fn(() => mockPromptBuilder),
+}));
+
+// Mock ClaudeCodeAgent
+const mockClaudeCodeAgent = {
+  isAvailable: vi.fn().mockResolvedValue(true),
+  createSession: vi.fn(),
+};
+
+vi.mock('../../src/services/agents/claude-code.agent.js', () => ({
+  ClaudeCodeAgent: vi.fn(() => mockClaudeCodeAgent),
 }));
 
 describe('ImplementCommand', () => {
@@ -76,6 +75,8 @@ describe('ImplementCommand', () => {
 
     mockGit = {
       currentBranch: vi.fn(),
+      getStatus: vi.fn().mockResolvedValue('changed'),
+      getCurrentCommit: vi.fn().mockResolvedValue('abc123'),
     } as any;
 
     mockGitHub = {
@@ -98,6 +99,14 @@ describe('ImplementCommand', () => {
     // Reset all mocks
     vi.clearAllMocks();
 
+    // Setup agent session mock
+    mockClaudeCodeAgent.createSession.mockResolvedValue({
+      events: (async function* () {
+        yield { type: 'text', content: 'Agent running...' };
+      })(),
+      cancel: vi.fn(),
+    });
+
     command = new ImplementCommand(
       mockLogger,
       mockConfig,
@@ -119,33 +128,6 @@ describe('ImplementCommand', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it('exits with error when Claude CLI is not installed', async () => {
-      vi.mocked(mockState.exists).mockResolvedValue(true);
-      vi.mocked(mockState.read).mockResolvedValue({
-        issue_number: 42,
-        issue_title: 'Add user authentication',
-        branch: 'issue-42-add-user-authentication',
-        stage: 'pick' as const,
-        stages: {
-          pick: 'completed' as const,
-          branch: 'pending' as const,
-          implement: 'pending' as const,
-          test: 'pending' as const,
-          demo: 'pending' as const,
-          pr: 'pending' as const,
-          review: 'pending' as const,
-        },
-      });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(false);
-
-      await command.execute();
-
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        'Claude CLI is not installed. Install it first: npm install -g @anthropics/claude-cli'
-      );
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    });
-
     it('displays header with issue info', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(true);
       vi.mocked(mockState.read).mockResolvedValue({
@@ -158,13 +140,10 @@ describe('ImplementCommand', () => {
           branch: 'pending' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -197,7 +176,6 @@ describe('ImplementCommand', () => {
           branch: 'pending' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -205,8 +183,6 @@ describe('ImplementCommand', () => {
 
       vi.mocked(mockState.exists).mockResolvedValue(true);
       vi.mocked(mockState.read).mockResolvedValue({ ...initialState });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -244,13 +220,10 @@ describe('ImplementCommand', () => {
           branch: 'pending' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -282,13 +255,10 @@ describe('ImplementCommand', () => {
           branch: 'pending' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -321,13 +291,10 @@ describe('ImplementCommand', () => {
           branch: 'pending' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -347,11 +314,13 @@ describe('ImplementCommand', () => {
 
       await command.execute();
 
-      expect(mockClaude.run).toHaveBeenCalledWith({
+      expect(mockClaudeCodeAgent.createSession).toHaveBeenCalledWith({
         prompt: 'Test prompt here',
-        maxTurns: 30,
-        allowedTools: 'Read,Write,Bash,Grep',
+        maxIterations: 30,
+        allowedTools: ['Read', 'Write', 'Bash', 'Grep'],
         logFile: '/test/project/.rig-logs/issue-42.log',
+        verbose: false,
+        providerOptions: { permissionMode: 'default' },
       });
     });
 
@@ -367,13 +336,10 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'in_progress' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -413,13 +379,10 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'in_progress' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -463,13 +426,10 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'in_progress' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -507,13 +467,10 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'in_progress' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -546,13 +503,10 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user authentication',
@@ -580,8 +534,6 @@ describe('ImplementCommand', () => {
         title: 'Fix bug in payment flow',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
       vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
@@ -616,7 +568,6 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -626,8 +577,6 @@ describe('ImplementCommand', () => {
         title: 'New issue',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
-      vi.mocked(mockClaude.run).mockResolvedValue(mockChildProcess);
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
       vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
@@ -656,7 +605,6 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },
@@ -673,8 +621,7 @@ describe('ImplementCommand', () => {
       await command.execute({ dryRun: true });
 
       expect(mockLogger.warn).toHaveBeenCalledWith('[DRY RUN MODE - No changes will be made]');
-      expect(mockClaude.isInstalled).not.toHaveBeenCalled();
-      expect(mockClaude.run).not.toHaveBeenCalled();
+      expect(mockClaudeCodeAgent.createSession).not.toHaveBeenCalled();
       expect(mockState.write).not.toHaveBeenCalled();
       expect(mockLogger.success).toHaveBeenCalledWith('Dry-run complete. Use without --dry-run to execute.');
     });
@@ -691,7 +638,6 @@ describe('ImplementCommand', () => {
           branch: 'completed' as const,
           implement: 'pending' as const,
           test: 'pending' as const,
-          demo: 'pending' as const,
           pr: 'pending' as const,
           review: 'pending' as const,
         },

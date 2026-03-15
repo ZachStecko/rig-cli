@@ -8,16 +8,6 @@ import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
 import { EventEmitter } from 'events';
 
-// Mock ClaudeService
-const mockClaude = {
-  isInstalled: vi.fn(),
-  run: vi.fn(),
-};
-
-vi.mock('../../src/services/claude.service.js', () => ({
-  ClaudeService: vi.fn(() => mockClaude),
-}));
-
 // Mock PromptBuilderService
 const mockPromptBuilder = {
   assembleReviewPrompt: vi.fn(),
@@ -43,6 +33,23 @@ const mockReadlineInterface = {
 
 vi.mock('readline', () => ({
   createInterface: vi.fn(() => mockReadlineInterface),
+}));
+
+// Mock ClaudeCodeAgent
+const mockAgentSession = {
+  events: (async function* () {
+    yield { type: 'text', content: 'Agent running...' };
+  })(),
+  cancel: vi.fn(),
+};
+
+const mockClaudeCodeAgent = {
+  isAvailable: vi.fn().mockResolvedValue(true),
+  createSession: vi.fn().mockResolvedValue(mockAgentSession),
+};
+
+vi.mock('../../src/services/agents/claude-code.agent.js', () => ({
+  ClaudeCodeAgent: vi.fn(() => mockClaudeCodeAgent),
 }));
 
 describe('ReviewCommand', () => {
@@ -148,7 +155,6 @@ describe('ReviewCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'fullstack' }],
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt for issue 42. Review file: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -191,7 +197,6 @@ describe('ReviewCommand', () => {
         title: 'Add feature X',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt for issue 99. Review file: `.rig-reviews/issue-99/review-2024-01-01-120000.md`'
       );
@@ -200,7 +205,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       // Trigger process completion after a short delay
       setTimeout(() => mockProcess.emit('close', 0), 10);
@@ -224,27 +228,21 @@ describe('ReviewCommand', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it('exits when Claude is not installed', async () => {
-      vi.mocked(mockState.exists).mockResolvedValue(true);
-      vi.mocked(mockState.read).mockResolvedValue({
-        issue_number: 42,
-        issue_title: 'Add user dashboard',
-        stage: 'pr',
-      });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(false);
-
-      await command.execute();
-
-      expect(mockLogger.error).toHaveBeenCalledWith('Claude CLI is not installed. Install it first: npm install -g @anthropics/claude-cli');
-      expect(exitSpy).toHaveBeenCalledWith(1);
-    });
-
     it('handles dry-run mode', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(true);
       vi.mocked(mockState.read).mockResolvedValue({
         issue_number: 42,
         issue_title: 'Add user dashboard',
+        branch: 'issue-42-add-user-dashboard',
         stage: 'pr',
+        stages: {
+          pick: 'completed',
+          branch: 'completed',
+          implement: 'completed',
+          test: 'completed',
+          pr: 'in_progress',
+          review: 'pending',
+        },
       });
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
@@ -254,7 +252,7 @@ describe('ReviewCommand', () => {
 
       expect(mockLogger.warn).toHaveBeenCalledWith('[DRY RUN MODE - No changes will be made]');
       expect(mockLogger.success).toHaveBeenCalledWith('Dry-run complete. Use without --dry-run to execute.');
-      expect(mockClaude.run).not.toHaveBeenCalled();
+      expect(mockClaudeCodeAgent.createSession).not.toHaveBeenCalled();
     });
 
     it('displays header with issue info', async () => {
@@ -262,9 +260,17 @@ describe('ReviewCommand', () => {
       vi.mocked(mockState.read).mockResolvedValue({
         issue_number: 42,
         issue_title: 'Add user dashboard',
+        branch: 'issue-42-add-user-dashboard',
         stage: 'pr',
+        stages: {
+          pick: 'completed',
+          branch: 'completed',
+          implement: 'completed',
+          test: 'completed',
+          pr: 'in_progress',
+          review: 'pending',
+        },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -272,7 +278,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       setTimeout(() => mockProcess.emit('close', 0), 10);
 
@@ -298,7 +303,6 @@ describe('ReviewCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'completed' as const,
-          demo: 'completed' as const,
           pr: 'completed' as const,
           review: 'pending' as const,
         },
@@ -306,7 +310,6 @@ describe('ReviewCommand', () => {
 
       vi.mocked(mockState.exists).mockResolvedValue(true);
       vi.mocked(mockState.read).mockResolvedValue({ ...initialState });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -314,7 +317,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       setTimeout(() => mockProcess.emit('close', 0), 10);
 
@@ -346,12 +348,10 @@ describe('ReviewCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'completed' as const,
-          demo: 'completed' as const,
           pr: 'completed' as const,
           review: 'in_progress' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -359,7 +359,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       setTimeout(() => mockProcess.emit('close', 0), 10);
 
@@ -390,12 +389,10 @@ describe('ReviewCommand', () => {
           branch: 'completed' as const,
           implement: 'completed' as const,
           test: 'completed' as const,
-          demo: 'completed' as const,
           pr: 'completed' as const,
           review: 'in_progress' as const,
         },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -403,7 +400,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       setTimeout(() => mockProcess.emit('close', 1), 10); // Exit code 1 = failure
 
@@ -425,9 +421,17 @@ describe('ReviewCommand', () => {
       vi.mocked(mockState.read).mockResolvedValue({
         issue_number: 42,
         issue_title: 'Add user dashboard',
+        branch: 'issue-42-add-user-dashboard',
         stage: 'review',
+        stages: {
+          pick: 'completed',
+          branch: 'completed',
+          implement: 'completed',
+          test: 'completed',
+          pr: 'completed',
+          review: 'in_progress',
+        },
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -435,7 +439,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       setTimeout(() => mockProcess.emit('close', 0), 10);
 
@@ -457,14 +460,22 @@ describe('ReviewCommand', () => {
       vi.mocked(mockState.read).mockResolvedValue({
         issue_number: 42,
         issue_title: 'Add user dashboard',
+        branch: 'issue-42-add-user-dashboard',
         stage: 'review',
+        stages: {
+          pick: 'completed',
+          branch: 'completed',
+          implement: 'completed',
+          test: 'completed',
+          pr: 'completed',
+          review: 'in_progress',
+        },
       });
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({
         number: 42,
         title: 'Add user dashboard',
         labels: [{ name: 'fullstack' }],
       });
-      vi.mocked(mockClaude.isInstalled).mockResolvedValue(true);
       vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
@@ -472,7 +483,6 @@ describe('ReviewCommand', () => {
       const mockProcess = new EventEmitter() as any;
       mockProcess.stdout = new EventEmitter();
       mockProcess.stderr = new EventEmitter();
-      vi.mocked(mockClaude.run).mockResolvedValue(mockProcess);
 
       setTimeout(() => mockProcess.emit('close', 0), 10);
 

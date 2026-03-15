@@ -282,7 +282,6 @@ describe('StateManager', () => {
           branch: 'completed',
           implement: 'completed',
           test: 'completed',
-          demo: 'completed',
           pr: 'completed',
           review: 'in_progress',
         },
@@ -300,7 +299,6 @@ describe('StateManager', () => {
         branch: 'failed',
         implement: 'failed',
         test: 'failed',
-        demo: 'failed',
         pr: 'failed',
         review: 'failed',
       };

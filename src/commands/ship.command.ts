@@ -11,7 +11,7 @@ import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
-import { ClaudeService } from '../services/claude.service.js';
+import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { StageName } from '../types/state.types.js';
@@ -50,7 +50,6 @@ export class ShipCommand extends BaseCommand {
   // private demoCommand: DemoCommand; // DISABLED: Demo feature disabled for redesign
   private prCommand: PrCommand;
   private reviewCommand: ReviewCommand;
-  private claude: ClaudeService;
   private promptBuilder: PromptBuilderService;
 
   /**
@@ -81,7 +80,6 @@ export class ShipCommand extends BaseCommand {
     this.reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
 
     // Initialize fix agent services
-    this.claude = new ClaudeService();
     const templateEngine = new TemplateEngine();
     this.promptBuilder = new PromptBuilderService(this.github, this.git, templateEngine);
   }
@@ -291,12 +289,17 @@ export class ShipCommand extends BaseCommand {
 
         try {
           const config = this.config.get();
-          await this.claude.run({
+          const fixAgent = new ClaudeCodeAgent();
+          const fixSession = await fixAgent.createSession({
             prompt: fixPrompt,
-            maxTurns: config.agent.max_turns,
-            allowedTools: 'all',
+            maxIterations: config.agent.max_turns,
             logFile,
           });
+
+          // Consume all events (don't display, just run)
+          for await (const _event of fixSession.events) {
+            // Fix agent runs silently
+          }
 
           this.logger.success('Fix agent completed. Retrying tests...');
           console.log('');

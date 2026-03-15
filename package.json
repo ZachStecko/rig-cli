@@ -43,6 +43,7 @@
     "demo-logger": "tsx demo-logger.ts"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.76",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "ora": "^8.2.0",
