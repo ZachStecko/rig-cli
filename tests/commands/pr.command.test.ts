@@ -111,7 +111,7 @@ describe('PrCommand', () => {
 
       await command.execute();
 
-      expect(mockLogger.error).toHaveBeenCalledWith("No active pipeline. Run 'rig next' to start.");
+      expect(mockLogger.error).toHaveBeenCalledWith("No active pipeline. Run 'rig next' to start or use --issue <number>.");
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 

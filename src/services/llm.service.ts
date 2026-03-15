@@ -1,7 +1,4 @@
-import { exec } from '../utils/shell.js';
-import { writeFile, mkdtemp, rm } from 'fs/promises';
-import { tmpdir } from 'os';
-import { join } from 'path';
+import { ClaudeCodeAgent } from './agents/claude-code.agent.js';
 
 /**
  * Response from structuring an issue description.
@@ -19,18 +16,23 @@ const GITHUB_TITLE_MAX_LENGTH = 256;
 /**
  * LLMService handles text processing tasks using Claude.
  *
- * Uses the Claude CLI in print mode (-p) for simple text completion tasks
- * like structuring issue descriptions.
+ * Uses ClaudeCodeAgent.prompt() (via the Claude Agent SDK subprocess)
+ * for simple text completion tasks like structuring issue descriptions.
  */
 export class LLMService {
+  private agent: ClaudeCodeAgent;
+
+  constructor() {
+    this.agent = new ClaudeCodeAgent();
+  }
+
   /**
-   * Checks if the Claude CLI is installed.
+   * Checks if the Claude Agent SDK is available (API key is set).
    *
-   * @returns true if claude is available, false otherwise
+   * @returns true if ANTHROPIC_API_KEY is set, false otherwise
    */
-  async isInstalled(): Promise<boolean> {
-    const result = await exec('claude --version');
-    return result.exitCode === 0;
+  async isAvailable(): Promise<boolean> {
+    return this.agent.isAvailable();
   }
 
   /**
@@ -42,78 +44,54 @@ export class LLMService {
    *
    * @param rawDescription - The user's unstructured issue description
    * @returns Structured issue with title and body
-   * @throws Error if Claude CLI is not available or API call fails
+   * @throws Error if API key is not set or API call fails
    */
   async structureIssue(rawDescription: string): Promise<StructuredIssue> {
-    // Prevent nested Claude Code sessions
-    if (process.env.CLAUDECODE) {
-      throw new Error('Cannot call Claude CLI from within a Claude Code session (nested sessions not supported)');
+    // Check if agent is available
+    const available = await this.isAvailable();
+    if (!available) {
+      throw new Error('ANTHROPIC_API_KEY is not set. Set your API key: export ANTHROPIC_API_KEY=sk-...');
     }
 
-    // Check if Claude is installed
-    const installed = await this.isInstalled();
-    if (!installed) {
-      throw new Error('Claude CLI is not installed. Install it with: npm install -g @anthropic-ai/claude-code');
-    }
+    // Build the prompt for structuring the issue, with JSON output instruction
+    const prompt = this.buildIssuePrompt(rawDescription);
+    const jsonPrompt = `${prompt}
 
-    // Create a temporary directory for our files
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rig-llm-'));
-    const promptFile = join(tmpDir, 'prompt.txt');
-    const schemaFile = join(tmpDir, 'schema.json');
+Respond with ONLY a valid JSON object with "title" and "body" fields. No markdown fences, no explanation.`;
 
+    // Call Claude via the agent SDK
+    const responseText = await this.agent.prompt(jsonPrompt);
+
+    // Parse JSON from the response
+    let structured: StructuredIssue;
     try {
-      // Build the prompt for structuring the issue
-      const prompt = this.buildIssuePrompt(rawDescription);
-
-      // Write prompt and schema to temporary files to avoid shell injection
-      await writeFile(promptFile, prompt, 'utf-8');
-      await writeFile(schemaFile, JSON.stringify(this.getIssueSchema()), 'utf-8');
-
-      // Call Claude CLI in print mode with JSON output using file references
-      const result = await exec(
-        `claude -p --output-format json --json-schema "$(cat "${schemaFile}")" < "${promptFile}"`
+      // Strip markdown code fences if present
+      const cleaned = responseText
+        .replace(/^```(?:json)?\s*\n?/, '')
+        .replace(/\n?```\s*$/, '')
+        .trim();
+      structured = JSON.parse(cleaned) as StructuredIssue;
+    } catch (error) {
+      throw new Error(
+        `Failed to parse structured issue response: ${error instanceof Error ? error.message : 'Unknown error'}\nReceived: ${responseText.substring(0, 500)}`
       );
-
-      if (result.exitCode !== 0) {
-        throw new Error(`Failed to structure issue: ${result.stderr}`);
-      }
-
-      // Parse and validate the JSON response
-      let structured: StructuredIssue;
-      try {
-        const response = JSON.parse(result.stdout);
-
-        // Claude CLI wraps the structured output in a metadata object
-        // Extract the actual structured_output field
-        if (response.structured_output) {
-          structured = response.structured_output as StructuredIssue;
-        } else {
-          // Fallback: try to use the response directly (for backward compatibility)
-          structured = response as StructuredIssue;
-        }
-      } catch (error) {
-        throw new Error(`Failed to parse structured issue response: ${error instanceof Error ? error.message : 'Unknown error'}\nReceived: ${result.stdout.substring(0, 500)}`);
-      }
-
-      // Validate the structured output
-      if (!structured.title?.trim()) {
-        throw new Error(`LLM returned an empty title`);
-      }
-
-      if (!structured.body?.trim()) {
-        throw new Error(`LLM returned an empty body`);
-      }
-
-      // Enforce GitHub's title length limit
-      if (structured.title.length > GITHUB_TITLE_MAX_LENGTH) {
-        structured.title = structured.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
-      }
-
-      return structured;
-    } finally {
-      // Clean up temporary directory and all contents
-      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
+
+    // Validate the structured output
+    if (!structured.title?.trim()) {
+      throw new Error(`LLM returned an empty title`);
+    }
+
+    if (!structured.body?.trim()) {
+      throw new Error(`LLM returned an empty body`);
+    }
+
+    // Enforce GitHub's title length limit
+    if (structured.title.length > GITHUB_TITLE_MAX_LENGTH) {
+      structured.title = structured.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
+    }
+
+    return structured;
   }
 
   /**

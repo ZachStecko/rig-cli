@@ -159,9 +159,10 @@ describe('Pipeline Integration Tests', () => {
       expect(savedState.issue_number).toBe(42);
       expect(savedState.issue_title).toBe('Add user dashboard');
       expect(savedState.branch).toBe('issue-42-add-user-dashboard');
-      expect(savedState.stage).toBe('pick');
+      // NextCommand now creates branch and advances stage
+      expect(savedState.stage).toBe('branch');
       expect(savedState.stages.pick).toBe('completed');
-      expect(savedState.stages.branch).toBe('pending');
+      expect(savedState.stages.branch).toBe('completed');
     });
 
     it('allows commands to read and update state sequentially', async () => {

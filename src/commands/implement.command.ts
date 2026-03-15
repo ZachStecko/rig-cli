@@ -6,7 +6,6 @@ import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
 import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
-import { AgentEvent } from '../services/agents/types.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import * as path from 'path';
@@ -82,7 +81,6 @@ export class ImplementCommand extends BaseCommand {
             branch: 'pending',
             implement: 'pending',
             test: 'pending',
-            demo: 'pending',
             pr: 'pending',
             review: 'pending',
           },
@@ -262,84 +260,4 @@ export class ImplementCommand extends BaseCommand {
     }
   }
 
-  /**
-   * Handles agent events and outputs them to console.
-   *
-   * @param event - Agent event to handle
-   */
-  private handleAgentEvent(event: AgentEvent): void {
-    switch (event.type) {
-      case 'text':
-        process.stdout.write(event.content);
-        break;
-
-      case 'thinking':
-        // Skip thinking events (internal)
-        break;
-
-      case 'tool_use':
-        this.formatToolUse(event.tool, event.input);
-        break;
-
-      case 'tool_result':
-        if (event.error) {
-          if (event.error.includes('requested permissions')) {
-            this.logger.warn('Permission required - operation skipped');
-          } else {
-            this.logger.error(event.error);
-          }
-        }
-        break;
-
-      case 'error':
-        this.logger.error(event.message);
-        if (event.fatal) {
-          throw new Error(event.message);
-        }
-        break;
-
-      case 'progress':
-        // Skip progress events (could add visual progress bar later)
-        break;
-
-      case 'complete':
-        // Session complete - handled by iterator completion
-        break;
-    }
-  }
-
-  /**
-   * Formats tool usage messages in a human-readable way.
-   *
-   * @param toolName - Name of the tool being used
-   * @param input - Tool input parameters
-   */
-  private formatToolUse(toolName: string, input: any): void {
-    switch (toolName) {
-      case 'Read':
-        this.logger.dim(`  Reading: ${input.file_path || 'file'}`);
-        break;
-      case 'Write':
-        this.logger.dim(`  Writing: ${input.file_path || 'file'}`);
-        break;
-      case 'Edit':
-        this.logger.dim(`  Editing: ${input.file_path || 'file'}`);
-        break;
-      case 'Bash':
-        const cmd = input.command || input.cmd || 'command';
-        // Truncate long commands
-        const displayCmd = cmd.length > 60 ? cmd.substring(0, 60) + '...' : cmd;
-        this.logger.dim(`  Running: ${displayCmd}`);
-        break;
-      case 'Glob':
-        this.logger.dim(`  Searching files: ${input.pattern || '*'}`);
-        break;
-      case 'Grep':
-        this.logger.dim(`  Searching code: "${input.pattern || ''}"`);
-        break;
-      default:
-        // For unknown tools, show minimal info
-        this.logger.dim(`  Using tool: ${toolName}`);
-    }
-  }
 }

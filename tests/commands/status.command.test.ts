@@ -152,12 +152,11 @@ describe('StatusCommand', () => {
 
       await command.execute();
 
-      // Verify all stages are displayed
+      // Verify all stages are displayed (demo removed - feature disabled)
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('pick'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('branch'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('implement'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('test'));
-      expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('demo'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('pr'));
       expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining('review'));
     });

@@ -908,7 +908,10 @@ rig-cli/
 │   │   ├── pr.command.ts
 │   │   └── review.command.ts
 │   ├── services/           # Core services
-│   │   ├── claude.service.ts
+│   │   ├── agents/
+│   │   │   ├── base.agent.ts
+│   │   │   ├── claude-code.agent.ts
+│   │   │   └── types.ts
 │   │   ├── github.service.ts
 │   │   ├── git.service.ts
 │   │   ├── state-manager.service.ts

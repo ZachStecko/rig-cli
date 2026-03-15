@@ -10,6 +10,7 @@ import {
 } from './types.js';
 
 // Constants
+const DEFAULT_MODEL = 'claude-sonnet-4-5-20250929';
 const DEFAULT_MAX_ITERATIONS = 80;
 const DEFAULT_ALLOWED_TOOLS = ['Read', 'Write', 'Edit', 'Bash', 'Grep', 'Glob'] as const;
 const VALID_PERMISSION_MODES = ['default', 'bypassPermissions', 'acceptEdits', 'dontAsk', 'plan', 'auto'] as const;
@@ -67,9 +68,11 @@ export class ClaudeCodeAgent extends CodeAgent {
     for await (const message of query({
       prompt: promptText,
       options: {
-        model: 'claude-sonnet-4-5-20250929',
+        model: DEFAULT_MODEL,
         maxTurns: 1,
-        allowedTools: [],
+        tools: [],
+        permissionMode: 'bypassPermissions' as any,
+        allowDangerouslySkipPermissions: true,
       },
     })) {
       if (message.type === 'assistant' && message.message?.content) {
@@ -90,7 +93,7 @@ export class ClaudeCodeAgent extends CodeAgent {
   async createSession(config: AgentSessionConfig): Promise<AgentSession> {
     // Validate and map permission mode
     const permissionMode = this.validatePermissionMode(
-      config.providerOptions?.permission_mode as string | undefined
+      config.providerOptions?.permissionMode as string | undefined
     );
 
     // Generate unique session ID
@@ -98,29 +101,53 @@ export class ClaudeCodeAgent extends CodeAgent {
 
     // Track state for cancellation and completion
     let cancelled = false;
-    let completionPromise: Promise<AgentResult> | null = null;
+
+    // Completion tracking — resolved when adaptStream finishes
+    let result: AgentResult = {
+      success: false,
+      filesChanged: [],
+      summary: `Session ${sessionId} failed`,
+    };
+    let resolveCompletion: (value: AgentResult) => void;
+    const completionPromise = new Promise<AgentResult>((resolve) => {
+      resolveCompletion = resolve;
+    });
 
     // Start SDK query
     const sdkStream = query({
       prompt: config.prompt,
       options: {
-        model: 'claude-sonnet-4-5-20250929',
+        model: DEFAULT_MODEL,
         maxTurns: config.maxIterations || DEFAULT_MAX_ITERATIONS,
         allowedTools: config.allowedTools || Array.from(DEFAULT_ALLOWED_TOOLS),
         permissionMode: permissionMode as any,
+        ...(permissionMode === 'bypassPermissions' ? { allowDangerouslySkipPermissions: true } : {}),
+        ...(config.verbose ? { verbose: true } : {}),
       },
     });
 
-    // Create completion promise
-    completionPromise = this.waitForCompletion(sdkStream, sessionId, config.workingDirectory);
+    // Log session config when verbose
+    if (config.verbose) {
+      console.error(`[verbose] Session ${sessionId}: model=${DEFAULT_MODEL} maxTurns=${config.maxIterations || DEFAULT_MAX_ITERATIONS} permissionMode=${permissionMode}`);
+      // Note: SDK does not support logFile directly; logging is handled by the caller
+      if (config.logFile) {
+        console.error(`[verbose] logFile requested but not supported by SDK: ${config.logFile}`);
+      }
+    }
 
     return {
       id: sessionId,
-      events: this.adaptStream(sdkStream, () => cancelled),
-      wait: () => completionPromise!,
+      events: this.adaptStream(sdkStream, () => cancelled, (success) => {
+        result = {
+          success,
+          filesChanged: [],
+          summary: success ? `Session ${sessionId} completed successfully` : `Session ${sessionId} failed`,
+        };
+        resolveCompletion!(result);
+      }),
+      wait: () => completionPromise,
       cancel: async () => {
         cancelled = true;
-        // SDK doesn't have a cancel method, so we rely on the adaptStream to stop yielding
       },
     };
   }
@@ -143,11 +170,16 @@ export class ClaudeCodeAgent extends CodeAgent {
 
   /**
    * Adapt Claude Agent SDK messages to AgentEvent format.
+   *
+   * Tracks completion state and calls onComplete when the stream finishes.
    */
   private async *adaptStream(
     sdkStream: AsyncIterable<any>,
-    isCancelled: () => boolean
+    isCancelled: () => boolean,
+    onComplete: (success: boolean) => void
   ): AsyncIterableIterator<AgentEvent> {
+    let success = false;
+
     try {
       for await (const message of sdkStream) {
         // Check if cancelled
@@ -156,6 +188,7 @@ export class ClaudeCodeAgent extends CodeAgent {
             type: 'complete',
             success: false,
           };
+          onComplete(false);
           return;
         }
 
@@ -195,9 +228,10 @@ export class ClaudeCodeAgent extends CodeAgent {
             fatal: message.fatal !== false,
           };
         } else if (message.type === 'result') {
+          success = message.subtype === 'success';
           yield {
             type: 'complete',
-            success: message.subtype === 'success',
+            success,
           };
         }
       }
@@ -212,59 +246,7 @@ export class ClaudeCodeAgent extends CodeAgent {
         success: false,
       };
     }
-  }
 
-  /**
-   * Wait for SDK session to complete and return result.
-   */
-  private async waitForCompletion(
-    sdkStream: AsyncIterable<any>,
-    sessionId: string,
-    workingDirectory?: string
-  ): Promise<AgentResult> {
-    let success = false;
-    let error: string | undefined;
-
-    // Consume the stream to get the final result
-    for await (const message of sdkStream) {
-      if (message.type === 'result') {
-        success = message.subtype === 'success';
-        if (!success && message.error) {
-          error = message.error.message || 'Session failed';
-        }
-      } else if (message.type === 'error') {
-        error = message.error?.message || 'Unknown error';
-      }
-    }
-
-    // Detect files changed (if in a git repo)
-    let filesChanged: string[] = [];
-    if (workingDirectory) {
-      try {
-        const { exec } = await import('../../utils/shell.js');
-        const originalCwd = process.cwd();
-        process.chdir(workingDirectory);
-
-        const result = await exec('git diff --name-only HEAD');
-
-        process.chdir(originalCwd);
-
-        if (result.exitCode === 0 && result.stdout) {
-          filesChanged = result.stdout
-            .split('\n')
-            .filter((line: string) => line.trim())
-            .map((line: string) => line.trim());
-        }
-      } catch {
-        // Ignore git errors - not in a repo or git not available
-      }
-    }
-
-    return {
-      success,
-      filesChanged,
-      summary: success ? `Session ${sessionId} completed successfully` : `Session ${sessionId} failed`,
-      error,
-    };
+    onComplete(success);
   }
 }

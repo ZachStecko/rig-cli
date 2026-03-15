@@ -409,98 +409,25 @@ describe('DemoRecorderService', () => {
   });
 
   describe('recordDemo', () => {
-    it('skips when demo.enabled is false', async () => {
-      vi.mocked(mockConfig.get).mockReturnValue({
-        demo: { enabled: false },
-      } as any);
-
+    // Demo feature disabled for redesign - recordDemo always returns skipped
+    it('always skips with disabled message', async () => {
       const result = await service.recordDemo(42, 'backend');
 
       expect(result.success).toBe(true);
       expect(result.skipped).toBe(true);
       expect(mockLogger.dim).toHaveBeenCalledWith(
-        'Demo recording disabled (demo.enabled: false)'
+        'Demo recording disabled - feature being redesigned'
       );
     });
 
-    it('records frontend demo only for frontend component', async () => {
-      vi.mocked(existsSync).mockImplementation((path: any) => {
-        if (path.includes('issue-42.ts')) return true;
-        if (path.includes('node_modules')) return true;
-        if (path.includes('.rig-reviews')) return true;
-        return false;
-      });
-
-      vi.mocked(readdirSync).mockReturnValue(['demo.webm'] as any);
-
-      vi.mocked(exec).mockResolvedValue({
-        exitCode: 0,
-        stdout: 'Success',
-        stderr: '',
-      });
-
+    it('skips for frontend component', async () => {
       const result = await service.recordDemo(42, 'frontend');
 
       expect(result.success).toBe(true);
-      expect(mockLogger.info).toHaveBeenCalledWith('Recording frontend demo...');
-      expect(mockLogger.info).not.toHaveBeenCalledWith('Recording terminal demo with VHS...');
+      expect(result.skipped).toBe(true);
     });
 
-    it('records backend demo only for backend component', async () => {
-      vi.mocked(exec).mockImplementation(async (cmd: string) => {
-        if (cmd.includes('which vhs')) {
-          return { exitCode: 0, stdout: '/usr/bin/vhs', stderr: '' };
-        }
-        if (cmd.includes('vhs')) {
-          return { exitCode: 0, stdout: 'Recording...', stderr: '' };
-        }
-        return { exitCode: 1, stdout: '', stderr: '' };
-      });
-
-      vi.mocked(existsSync).mockImplementation((path: any) => {
-        if (path.includes('demo-backend.tape')) return true;
-        if (path.includes('.gif')) return true;
-        if (path.includes('.rig-reviews')) return true;
-        return false;
-      });
-
-      const result = await service.recordDemo(42, 'backend');
-
-      expect(result.success).toBe(true);
-      expect(mockLogger.info).toHaveBeenCalledWith('Recording terminal demo with VHS...');
-      expect(mockLogger.info).not.toHaveBeenCalledWith('Recording frontend demo...');
-    });
-
-    it('records both demos for fullstack component', async () => {
-      // Mock both frontend and backend successful
-      vi.mocked(existsSync).mockImplementation((path: any) => {
-        if (path.includes('issue-42.ts')) return true;
-        if (path.includes('node_modules')) return true;
-        if (path.includes('demo-backend.tape')) return true;
-        if (path.includes('.gif')) return true;
-        if (path.includes('.rig-reviews')) return true;
-        return false;
-      });
-
-      vi.mocked(readdirSync).mockReturnValue(['demo.webm'] as any);
-
-      vi.mocked(exec).mockImplementation(async (cmd: string) => {
-        if (cmd.includes('which vhs')) {
-          return { exitCode: 0, stdout: '/usr/bin/vhs', stderr: '' };
-        }
-        return { exitCode: 0, stdout: 'Success', stderr: '' };
-      });
-
-      const result = await service.recordDemo(42, 'fullstack');
-
-      expect(result.success).toBe(true);
-      expect(mockLogger.info).toHaveBeenCalledWith('Recording frontend demo...');
-      expect(mockLogger.info).toHaveBeenCalledWith('Recording terminal demo with VHS...');
-    });
-
-    it('returns success even if individual demos fail', async () => {
-      vi.mocked(existsSync).mockReturnValue(false);
-
+    it('skips for fullstack component', async () => {
       const result = await service.recordDemo(42, 'fullstack');
 
       expect(result.success).toBe(true);

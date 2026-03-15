@@ -397,11 +397,16 @@ describe('ReviewCommand', () => {
         'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
       );
 
-      const mockProcess = new EventEmitter() as any;
-      mockProcess.stdout = new EventEmitter();
-      mockProcess.stderr = new EventEmitter();
+      // Provide fresh agent session and ensure review file doesn't exist
+      mockClaudeCodeAgent.createSession.mockResolvedValue({
+        events: (async function* () {
+          yield { type: 'text', content: 'Agent running...' };
+        })(),
+        cancel: vi.fn(),
+      });
 
-      setTimeout(() => mockProcess.emit('close', 1), 10); // Exit code 1 = failure
+      const fs = await import('fs');
+      vi.mocked(fs.existsSync).mockReturnValue(false);
 
       await command.execute();
 
@@ -412,7 +417,7 @@ describe('ReviewCommand', () => {
         }),
       }));
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Review failed: Process exited with code 1');
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Review failed:'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 

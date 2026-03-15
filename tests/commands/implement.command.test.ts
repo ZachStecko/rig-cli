@@ -75,8 +75,12 @@ describe('ImplementCommand', () => {
 
     mockGit = {
       currentBranch: vi.fn(),
-      getStatus: vi.fn().mockResolvedValue('changed'),
-      getCurrentCommit: vi.fn().mockResolvedValue('abc123'),
+      getStatus: vi.fn()
+        .mockResolvedValueOnce('clean')
+        .mockResolvedValue('changed'),
+      getCurrentCommit: vi.fn()
+        .mockResolvedValueOnce('abc123')
+        .mockResolvedValue('def456'),
     } as any;
 
     mockGitHub = {
@@ -392,11 +396,13 @@ describe('ImplementCommand', () => {
       vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
-      // Simulate failed process
-      mockChildProcess.exitCode = 1;
-      setTimeout(() => {
-        mockChildProcess.emit('close', 1);
-      }, 10);
+      // Simulate agent session error
+      mockClaudeCodeAgent.createSession.mockResolvedValue({
+        events: (async function* () {
+          throw new Error('Agent execution failed');
+        })(),
+        cancel: vi.fn(),
+      });
 
       await command.execute();
 
@@ -407,8 +413,8 @@ describe('ImplementCommand', () => {
         }),
       }));
 
-      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Implementation failed'));
-      expect(mockLogger.dim).toHaveBeenCalledWith('Check log: /test/project/.rig-logs/issue-42.log');
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Implementation failed: Agent execution failed'));
+      expect(mockLogger.dim).toHaveBeenCalledWith(expect.stringContaining('Check log:'));
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
@@ -439,18 +445,19 @@ describe('ImplementCommand', () => {
       vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
-      // Simulate stdout output then completion
-      setTimeout(() => {
-        mockChildProcess.stdout.emit('data', Buffer.from('Claude output line 1\n'));
-        mockChildProcess.stdout.emit('data', Buffer.from('Claude output line 2\n'));
-        mockChildProcess.exitCode = 0;
-        mockChildProcess.emit('close', 0);
-      }, 10);
+      // Mock agent session to yield text events
+      mockClaudeCodeAgent.createSession.mockResolvedValue({
+        events: (async function* () {
+          yield { type: 'text', content: 'Claude output line 1\n' };
+          yield { type: 'text', content: 'Claude output line 2\n' };
+        })(),
+        cancel: vi.fn(),
+      });
 
       await command.execute();
 
-      expect(stdoutSpy).toHaveBeenCalledWith(Buffer.from('Claude output line 1\n'));
-      expect(stdoutSpy).toHaveBeenCalledWith(Buffer.from('Claude output line 2\n'));
+      expect(stdoutSpy).toHaveBeenCalledWith('Claude output line 1\n');
+      expect(stdoutSpy).toHaveBeenCalledWith('Claude output line 2\n');
 
       stdoutSpy.mockRestore();
     });

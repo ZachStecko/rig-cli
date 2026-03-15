@@ -88,7 +88,6 @@ export class TestCommand extends BaseCommand {
             branch: 'pending',
             implement: 'pending',
             test: 'pending',
-            demo: 'pending',
             pr: 'pending',
             review: 'pending',
           },

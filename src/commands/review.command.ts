@@ -6,7 +6,6 @@ import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
 import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
-import { AgentEvent } from '../services/agents/types.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import * as path from 'path';
@@ -105,7 +104,6 @@ export class ReviewCommand extends BaseCommand {
             branch: 'pending',
             implement: 'pending',
             test: 'pending',
-            demo: 'pending',
             pr: 'pending',
             review: 'pending',
           },
@@ -151,7 +149,6 @@ export class ReviewCommand extends BaseCommand {
             branch: 'completed',
             implement: 'completed',
             test: 'completed',
-            demo: 'completed',
             pr: 'completed',
             review: 'pending',
           },
@@ -488,50 +485,4 @@ Follow these steps:
 Be surgical in your changes - fix only what's broken.`;
   }
 
-  /**
-   * Handles agent events and outputs them to console.
-   *
-   * @param event - Agent event to handle
-   */
-  private handleAgentEvent(event: AgentEvent): void {
-    switch (event.type) {
-      case 'text':
-        process.stdout.write(event.content);
-        break;
-
-      case 'thinking':
-        // Skip thinking events (internal)
-        break;
-
-      case 'tool_use':
-        // Show minimal tool info for review
-        this.logger.dim(`  Using: ${event.tool}`);
-        break;
-
-      case 'tool_result':
-        if (event.error) {
-          if (event.error.includes('requested permissions')) {
-            this.logger.warn('Permission required - operation skipped');
-          } else {
-            this.logger.error(event.error);
-          }
-        }
-        break;
-
-      case 'error':
-        this.logger.error(event.message);
-        if (event.fatal) {
-          throw new Error(event.message);
-        }
-        break;
-
-      case 'progress':
-        // Skip progress events
-        break;
-
-      case 'complete':
-        // Session complete - handled by iterator completion
-        break;
-    }
-  }
 }

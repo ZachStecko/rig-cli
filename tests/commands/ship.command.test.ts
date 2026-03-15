@@ -26,12 +26,6 @@ vi.mock('../../src/commands/test.command.js', () => ({
   })),
 }));
 
-vi.mock('../../src/commands/demo.command.js', () => ({
-  DemoCommand: vi.fn().mockImplementation(() => ({
-    execute: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
-
 vi.mock('../../src/commands/pr.command.js', () => ({
   PrCommand: vi.fn().mockImplementation(() => ({
     execute: vi.fn().mockResolvedValue(undefined),
@@ -44,6 +38,19 @@ vi.mock('../../src/commands/review.command.js', () => ({
   })),
 }));
 
+// Mock ClaudeCodeAgent (used by ship for fix agent)
+vi.mock('../../src/services/agents/claude-code.agent.js', () => ({
+  ClaudeCodeAgent: vi.fn().mockImplementation(() => ({
+    isAvailable: vi.fn().mockResolvedValue(true),
+    createSession: vi.fn().mockResolvedValue({
+      events: (async function* () {
+        yield { type: 'text', content: 'Fix applied' };
+      })(),
+      cancel: vi.fn(),
+    }),
+  })),
+}));
+
 describe('ShipCommand', () => {
   let command: ShipCommand;
   let mockLogger: Logger;
@@ -53,6 +60,22 @@ describe('ShipCommand', () => {
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
   let exitSpy: any;
+
+  // Default state returned after "nextCommand picks an issue"
+  const defaultFreshState = {
+    issue_number: 42,
+    issue_title: 'Test Issue',
+    branch: 'issue-42-test-issue',
+    stage: 'branch',
+    stages: {
+      pick: 'completed',
+      branch: 'completed',
+      implement: 'pending',
+      test: 'pending',
+      pr: 'pending',
+      review: 'pending',
+    },
+  };
 
   beforeEach(async () => {
     mockLogger = {
@@ -112,6 +135,7 @@ describe('ShipCommand', () => {
   describe('execute', () => {
     it('checks GitHub authentication before proceeding', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute();
 
@@ -120,6 +144,7 @@ describe('ShipCommand', () => {
 
     it('displays header', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute();
 
@@ -128,22 +153,23 @@ describe('ShipCommand', () => {
 
     it('starts fresh pipeline when no state exists', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute();
 
       // Should call NextCommand to pick issue
       expect((command as any).nextCommand.execute).toHaveBeenCalled();
 
-      // Should run all pipeline stages
+      // Should run all pipeline stages (demo removed)
       expect((command as any).implementCommand.execute).toHaveBeenCalled();
       expect((command as any).testCommand.execute).toHaveBeenCalled();
-      expect((command as any).demoCommand.execute).toHaveBeenCalled();
       expect((command as any).prCommand.execute).toHaveBeenCalled();
       expect((command as any).reviewCommand.execute).toHaveBeenCalled();
     });
 
     it('passes phase and component filters to NextCommand', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute({ phase: 'Phase 1: MVP', component: 'backend' });
 
@@ -155,6 +181,7 @@ describe('ShipCommand', () => {
 
     it('starts with specific issue when --issue provided', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute({ issue: '99' });
 
@@ -199,7 +226,6 @@ describe('ShipCommand', () => {
       // Should skip to test stage and run remaining stages
       expect((command as any).implementCommand.execute).not.toHaveBeenCalled(); // Already completed
       expect((command as any).testCommand.execute).toHaveBeenCalled();
-      expect((command as any).demoCommand.execute).toHaveBeenCalled();
       expect((command as any).prCommand.execute).toHaveBeenCalled();
       expect((command as any).reviewCommand.execute).toHaveBeenCalled();
     });
@@ -225,7 +251,6 @@ describe('ShipCommand', () => {
 
       expect((command as any).implementCommand.execute).toHaveBeenCalled();
       expect((command as any).testCommand.execute).toHaveBeenCalled();
-      expect((command as any).demoCommand.execute).toHaveBeenCalled();
       expect((command as any).prCommand.execute).toHaveBeenCalled();
       expect((command as any).reviewCommand.execute).toHaveBeenCalled();
     });
@@ -251,7 +276,6 @@ describe('ShipCommand', () => {
 
       expect((command as any).implementCommand.execute).not.toHaveBeenCalled();
       expect((command as any).testCommand.execute).not.toHaveBeenCalled();
-      expect((command as any).demoCommand.execute).not.toHaveBeenCalled();
       expect((command as any).prCommand.execute).toHaveBeenCalled();
       expect((command as any).reviewCommand.execute).toHaveBeenCalled();
     });
@@ -277,7 +301,6 @@ describe('ShipCommand', () => {
 
       expect((command as any).implementCommand.execute).not.toHaveBeenCalled();
       expect((command as any).testCommand.execute).not.toHaveBeenCalled();
-      expect((command as any).demoCommand.execute).not.toHaveBeenCalled();
       expect((command as any).prCommand.execute).not.toHaveBeenCalled();
       expect((command as any).reviewCommand.execute).toHaveBeenCalled();
     });
@@ -347,6 +370,7 @@ describe('ShipCommand', () => {
 
     it('retries tests up to 3 times on failure', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       // Mock test command to fail twice, then succeed
       let testAttempts = 0;
@@ -368,6 +392,7 @@ describe('ShipCommand', () => {
 
     it('fails pipeline after max test retries', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       // Mock test command to always fail
       vi.mocked((command as any).testCommand.execute).mockRejectedValue(new Error('Tests failed'));
@@ -381,21 +406,22 @@ describe('ShipCommand', () => {
 
     it('displays success message on completion', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute();
 
       expect(mockLogger.success).toHaveBeenCalledWith('Pipeline complete!');
-      expect(mockLogger.info).toHaveBeenCalledWith('Issue has been implemented, tested, demoed, and submitted for review.');
+      expect(mockLogger.info).toHaveBeenCalledWith('Issue has been implemented, tested, and submitted for review.');
     });
 
     it('logs stage names during execution', async () => {
       vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
 
       await command.execute();
 
       expect(mockLogger.info).toHaveBeenCalledWith('Stage: implement');
       expect(mockLogger.info).toHaveBeenCalledWith('Stage: test');
-      expect(mockLogger.info).toHaveBeenCalledWith('Stage: demo');
       expect(mockLogger.info).toHaveBeenCalledWith('Stage: pr');
       expect(mockLogger.info).toHaveBeenCalledWith('Stage: review');
     });
