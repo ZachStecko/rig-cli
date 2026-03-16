@@ -5,7 +5,7 @@ import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
-import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
+import { createAgent } from '../services/agents/agent-factory.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import * as path from 'path';
@@ -170,11 +170,10 @@ export class ReviewCommand extends BaseCommand {
 
     // Check Claude agent is available (skip if dry-run)
     if (!options?.dryRun) {
-      const agent = new ClaudeCodeAgent();
-      const available = await agent.isAvailable();
-      if (!available) {
-        this.logger.error('ANTHROPIC_API_KEY environment variable is not set.');
-        this.logger.info('Set your API key: export ANTHROPIC_API_KEY=sk-...');
+      const agent = createAgent(this.config.get());
+      const auth = await agent.checkAuth();
+      if (!auth.authenticated) {
+        this.logger.error(auth.error || 'Agent is not available');
         process.exit(1);
         return; // For testing
       }
@@ -258,7 +257,7 @@ export class ReviewCommand extends BaseCommand {
       this.logger.step(2, 3, 'Running code review agent...');
       console.log('');
 
-      const reviewAgent = new ClaudeCodeAgent();
+      const reviewAgent = createAgent(this.config.get());
       const reviewSession = await reviewAgent.createSession({
         prompt,
         maxIterations: maxTurns,
@@ -307,7 +306,7 @@ export class ReviewCommand extends BaseCommand {
               `fix-issue-${issueNumber}-finding-${i + 1}.log`
             );
 
-            const fixAgent = new ClaudeCodeAgent();
+            const fixAgent = createAgent(this.config.get());
             const fixSession = await fixAgent.createSession({
               prompt: fixPrompt,
               maxIterations: 10,

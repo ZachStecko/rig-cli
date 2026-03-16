@@ -9,7 +9,7 @@ import { PrTemplateService } from '../services/pr-template.service.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { TestRunnerService } from '../services/test-runner.service.js';
-import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
+import { createAgent } from '../services/agents/agent-factory.js';
 import { exec } from '../utils/shell.js';
 
 /**
@@ -335,7 +335,7 @@ export class PrCommand extends BaseCommand {
     const logFile = `${this.projectRoot}/.rig-logs/pr-feedback-${prNumber}.log`;
 
     try {
-      const feedbackAgent = new ClaudeCodeAgent();
+      const feedbackAgent = createAgent(this.config.get());
       const feedbackSession = await feedbackAgent.createSession({
         prompt: fixPrompt,
         maxIterations: maxTurns,

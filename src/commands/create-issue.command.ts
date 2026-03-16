@@ -29,7 +29,7 @@ export class CreateIssueCommand extends BaseCommand {
     projectRoot?: string
   ) {
     super(logger, config, state, git, github, guard, projectRoot);
-    this.llm = new LLMService();
+    this.llm = new LLMService(undefined, this.config.get());
   }
 
   /**
@@ -38,11 +38,17 @@ export class CreateIssueCommand extends BaseCommand {
    * @throws Error if preconditions fail or issue creation fails
    */
   async execute(): Promise<void> {
+    const rigConfig = this.config.get();
+    const verbose = rigConfig.verbose || false;
+
     // Check preconditions
     await this.guard.requireGhAuth();
 
     this.logger.header('Create GitHub Issue');
     console.log('');
+
+    this.logger.config('Agent provider', rigConfig.agent.provider || 'binary');
+    this.logger.config('Verbose', verbose);
 
     // Get raw description from user
     this.logger.info('Describe the issue in your own words (multiline input):');
@@ -55,21 +61,26 @@ export class CreateIssueCommand extends BaseCommand {
       return;
     }
 
+    this.logger.config('Description length', `${rawDescription.length} chars`);
+
     // Check if LLM service is available
     const llmAvailable = await this.llm.isAvailable();
+    this.logger.config('Agent available', llmAvailable);
     if (!llmAvailable) {
-      this.logger.error('ANTHROPIC_API_KEY is not set.');
-      this.logger.info('Set your API key: export ANTHROPIC_API_KEY=sk-...');
+      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
       return;
     }
 
     // Structure the issue using LLM
-    this.logger.info('Structuring your issue...');
-    console.log('');
-
     let structured;
     try {
-      structured = await this.llm.structureIssue(rawDescription);
+      this.logger.command('claude -p <prompt> --output-format json');
+      const startTime = Date.now();
+      structured = await this.logger.spinner(
+        this.llm.structureIssue(rawDescription),
+        'Structuring your issue with Claude...'
+      );
+      this.logger.timing('Issue structuring', Date.now() - startTime);
     } catch (error) {
       this.logger.error(`Failed to structure issue: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return;
@@ -87,6 +98,7 @@ export class CreateIssueCommand extends BaseCommand {
 
     // Create the issue
     try {
+      this.logger.command('gh issue create');
       const issueNumber = await this.github.createIssue({
         title: structured.title,
         body: structured.body,

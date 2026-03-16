@@ -33,11 +33,15 @@ describe('CreateIssueCommand', () => {
       warn: vi.fn(),
       error: vi.fn(),
       dim: vi.fn(),
+      config: vi.fn(),
+      command: vi.fn(),
+      timing: vi.fn(),
+      spinner: vi.fn((promise: Promise<any>) => promise),
     } as any;
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn(),
+      get: vi.fn().mockReturnValue({ agent: { provider: 'binary' }, verbose: false }),
     } as any;
 
     mockState = {
@@ -171,7 +175,7 @@ describe('CreateIssueCommand', () => {
       await command.execute();
 
       expect(mockLLMService.isAvailable).toHaveBeenCalled();
-      expect(mockLogger.error).toHaveBeenCalledWith('ANTHROPIC_API_KEY is not set.');
+      expect(mockLogger.error).toHaveBeenCalledWith('Agent is not available. Check your .rig.yml provider setting and authentication.');
     });
 
     it('successfully creates an issue with structured content', async () => {

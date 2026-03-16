@@ -29,14 +29,15 @@ vi.mock('../../src/services/prompt-builder.service.js', () => ({
   PromptBuilderService: vi.fn(() => mockPromptBuilder),
 }));
 
-// Mock ClaudeCodeAgent
-const mockClaudeCodeAgent = {
+// Mock createAgent factory
+const mockAgent = {
   isAvailable: vi.fn().mockResolvedValue(true),
+  checkAuth: vi.fn().mockResolvedValue({ authenticated: true, method: 'api_key' }),
   createSession: vi.fn(),
 };
 
-vi.mock('../../src/services/agents/claude-code.agent.js', () => ({
-  ClaudeCodeAgent: vi.fn(() => mockClaudeCodeAgent),
+vi.mock('../../src/services/agents/agent-factory.js', () => ({
+  createAgent: vi.fn(() => mockAgent),
 }));
 
 describe('ImplementCommand', () => {
@@ -104,7 +105,7 @@ describe('ImplementCommand', () => {
     vi.clearAllMocks();
 
     // Setup agent session mock
-    mockClaudeCodeAgent.createSession.mockResolvedValue({
+    mockAgent.createSession.mockResolvedValue({
       events: (async function* () {
         yield { type: 'text', content: 'Agent running...' };
       })(),
@@ -318,7 +319,7 @@ describe('ImplementCommand', () => {
 
       await command.execute();
 
-      expect(mockClaudeCodeAgent.createSession).toHaveBeenCalledWith({
+      expect(mockAgent.createSession).toHaveBeenCalledWith({
         prompt: 'Test prompt here',
         maxIterations: 30,
         allowedTools: ['Read', 'Write', 'Bash', 'Grep'],
@@ -397,7 +398,7 @@ describe('ImplementCommand', () => {
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate agent session error
-      mockClaudeCodeAgent.createSession.mockResolvedValue({
+      mockAgent.createSession.mockResolvedValue({
         events: (async function* () {
           throw new Error('Agent execution failed');
         })(),
@@ -446,7 +447,7 @@ describe('ImplementCommand', () => {
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Mock agent session to yield text events
-      mockClaudeCodeAgent.createSession.mockResolvedValue({
+      mockAgent.createSession.mockResolvedValue({
         events: (async function* () {
           yield { type: 'text', content: 'Claude output line 1\n' };
           yield { type: 'text', content: 'Claude output line 2\n' };
@@ -628,7 +629,7 @@ describe('ImplementCommand', () => {
       await command.execute({ dryRun: true });
 
       expect(mockLogger.warn).toHaveBeenCalledWith('[DRY RUN MODE - No changes will be made]');
-      expect(mockClaudeCodeAgent.createSession).not.toHaveBeenCalled();
+      expect(mockAgent.createSession).not.toHaveBeenCalled();
       expect(mockState.write).not.toHaveBeenCalled();
       expect(mockLogger.success).toHaveBeenCalledWith('Dry-run complete. Use without --dry-run to execute.');
     });

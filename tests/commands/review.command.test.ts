@@ -35,7 +35,7 @@ vi.mock('readline', () => ({
   createInterface: vi.fn(() => mockReadlineInterface),
 }));
 
-// Mock ClaudeCodeAgent
+// Mock createAgent factory
 const mockAgentSession = {
   events: (async function* () {
     yield { type: 'text', content: 'Agent running...' };
@@ -43,13 +43,14 @@ const mockAgentSession = {
   cancel: vi.fn(),
 };
 
-const mockClaudeCodeAgent = {
+const mockAgent = {
   isAvailable: vi.fn().mockResolvedValue(true),
+  checkAuth: vi.fn().mockResolvedValue({ authenticated: true, method: 'api_key' }),
   createSession: vi.fn().mockResolvedValue(mockAgentSession),
 };
 
-vi.mock('../../src/services/agents/claude-code.agent.js', () => ({
-  ClaudeCodeAgent: vi.fn(() => mockClaudeCodeAgent),
+vi.mock('../../src/services/agents/agent-factory.js', () => ({
+  createAgent: vi.fn(() => mockAgent),
 }));
 
 describe('ReviewCommand', () => {
@@ -253,7 +254,7 @@ describe('ReviewCommand', () => {
 
       expect(mockLogger.warn).toHaveBeenCalledWith('[DRY RUN MODE - No changes will be made]');
       expect(mockLogger.success).toHaveBeenCalledWith('Dry-run complete. Use without --dry-run to execute.');
-      expect(mockClaudeCodeAgent.createSession).not.toHaveBeenCalled();
+      expect(mockAgent.createSession).not.toHaveBeenCalled();
     });
 
     it('displays header with issue info', async () => {
@@ -399,7 +400,7 @@ describe('ReviewCommand', () => {
       );
 
       // Provide fresh agent session and ensure review file doesn't exist
-      mockClaudeCodeAgent.createSession.mockResolvedValue({
+      mockAgent.createSession.mockResolvedValue({
         events: (async function* () {
           yield { type: 'text', content: 'Agent running...' };
         })(),
