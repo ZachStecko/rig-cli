@@ -1,5 +1,3 @@
-#### still in beta — use at your own risk
-
 # rig-cli
 
 ![rig-cli logo](./assets/logo.png)
