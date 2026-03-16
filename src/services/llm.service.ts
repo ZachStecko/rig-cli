@@ -1,4 +1,6 @@
-import { ClaudeCodeAgent } from './agents/claude-code.agent.js';
+import { CodeAgent } from './agents/base.agent.js';
+import { createAgent } from './agents/agent-factory.js';
+import { RigConfig } from '../types/config.types.js';
 
 /**
  * Response from structuring an issue description.
@@ -16,20 +18,20 @@ const GITHUB_TITLE_MAX_LENGTH = 256;
 /**
  * LLMService handles text processing tasks using Claude.
  *
- * Uses ClaudeCodeAgent.prompt() (via the Claude Agent SDK subprocess)
- * for simple text completion tasks like structuring issue descriptions.
+ * Uses the configured agent's prompt() method for simple text completion
+ * tasks like structuring issue descriptions.
  */
 export class LLMService {
-  private agent: ClaudeCodeAgent;
+  private agent: CodeAgent;
 
-  constructor() {
-    this.agent = new ClaudeCodeAgent();
+  constructor(agent?: CodeAgent, config?: RigConfig) {
+    this.agent = agent ?? createAgent(config);
   }
 
   /**
    * Checks if the Claude Agent SDK is available (API key is set).
    *
-   * @returns true if ANTHROPIC_API_KEY is set, false otherwise
+   * @returns true if the agent is available, false otherwise
    */
   async isAvailable(): Promise<boolean> {
     return this.agent.isAvailable();
@@ -48,9 +50,9 @@ export class LLMService {
    */
   async structureIssue(rawDescription: string): Promise<StructuredIssue> {
     // Check if agent is available
-    const available = await this.isAvailable();
-    if (!available) {
-      throw new Error('ANTHROPIC_API_KEY is not set. Set your API key: export ANTHROPIC_API_KEY=sk-...');
+    const auth = await this.agent.checkAuth();
+    if (!auth.authenticated) {
+      throw new Error(auth.error || 'Agent is not available. Check your configuration.');
     }
 
     // Build the prompt for structuring the issue, with JSON output instruction
@@ -59,18 +61,34 @@ export class LLMService {
 
 Respond with ONLY a valid JSON object with "title" and "body" fields. No markdown fences, no explanation.`;
 
-    // Call Claude via the agent SDK
+    // Call Claude via the agent
+    if (!this.agent.prompt) {
+      throw new Error('Agent does not support the prompt() method');
+    }
     const responseText = await this.agent.prompt(jsonPrompt);
 
-    // Parse JSON from the response
+    // Extract JSON from the response — Claude may include preamble text
+    // before the actual JSON object when acting as an agent.
     let structured: StructuredIssue;
     try {
       // Strip markdown code fences if present
       const cleaned = responseText
-        .replace(/^```(?:json)?\s*\n?/, '')
-        .replace(/\n?```\s*$/, '')
+        .replace(/```(?:json)?\s*\n?/g, '')
+        .replace(/\n?```/g, '')
         .trim();
-      structured = JSON.parse(cleaned) as StructuredIssue;
+
+      // Try parsing the whole thing first (fast path)
+      try {
+        structured = JSON.parse(cleaned) as StructuredIssue;
+      } catch {
+        // Find the first { ... } JSON object in the response
+        const jsonStart = cleaned.indexOf('{');
+        const jsonEnd = cleaned.lastIndexOf('}');
+        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+          throw new Error('No JSON object found in response');
+        }
+        structured = JSON.parse(cleaned.substring(jsonStart, jsonEnd + 1)) as StructuredIssue;
+      }
     } catch (error) {
       throw new Error(
         `Failed to parse structured issue response: ${error instanceof Error ? error.message : 'Unknown error'}\nReceived: ${responseText.substring(0, 500)}`
@@ -176,28 +194,4 @@ ANTI-SLOP RULES — strictly follow these:
 - Be concrete and prescriptive — the AI agent needs zero ambiguity`;
   }
 
-  /**
-   * Gets the JSON schema for structured issue output.
-   *
-   * @returns JSON schema object
-   */
-  private getIssueSchema(): object {
-    return {
-      type: 'object',
-      properties: {
-        title: {
-          type: 'string',
-          description:
-            'Imperative-mood issue title, 50-80 characters. Use a component prefix (e.g. "cli:", "api:", "ui:") when the scope is obvious.',
-        },
-        body: {
-          type: 'string',
-          description:
-            'Implementation spec with H2 sections: Problem/Motivation, Implementation Details (files, functions, types, code), Approach (architecture, patterns), Testing Strategy (test paths and cases), Acceptance Criteria (testable bullets), Dependencies (optional), Notes (optional), Questions for Developer (optional if details missing). 400-800 words for medium/large features. Senior engineer tone. State assumptions when unclear. Claude Code agent will implement this - be concrete and prescriptive.',
-        },
-      },
-      required: ['title', 'body'],
-      additionalProperties: false,
-    };
-  }
 }

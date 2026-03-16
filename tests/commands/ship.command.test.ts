@@ -38,10 +38,11 @@ vi.mock('../../src/commands/review.command.js', () => ({
   })),
 }));
 
-// Mock ClaudeCodeAgent (used by ship for fix agent)
-vi.mock('../../src/services/agents/claude-code.agent.js', () => ({
-  ClaudeCodeAgent: vi.fn().mockImplementation(() => ({
+// Mock createAgent factory (used by ship for fix agent)
+vi.mock('../../src/services/agents/agent-factory.js', () => ({
+  createAgent: vi.fn(() => ({
     isAvailable: vi.fn().mockResolvedValue(true),
+    checkAuth: vi.fn().mockResolvedValue({ authenticated: true, method: 'api_key' }),
     createSession: vi.fn().mockResolvedValue({
       events: (async function* () {
         yield { type: 'text', content: 'Fix applied' };

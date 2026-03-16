@@ -2,6 +2,8 @@
  * Configuration for Claude agent behavior.
  */
 export interface AgentConfig {
+  /** Agent provider: 'binary' uses the Claude CLI (works with Max subscription), 'sdk' uses the Anthropic API (requires ANTHROPIC_API_KEY) (default: 'binary') */
+  provider?: 'sdk' | 'binary';
   /** Maximum turns for Claude agent execution (default: 80) */
   max_turns: number;
   /** Permission mode for file operations: 'default' requires approval, 'bypassPermissions' auto-approves all, 'acceptEdits' accepts edits, 'dontAsk' skips prompts, 'plan' for plan mode, 'auto' for automatic (default: 'bypassPermissions') */
@@ -89,7 +91,7 @@ export interface RigConfig {
  * These are used when .rig.yml is missing or fields are omitted.
  */
 export const DEFAULT_CONFIG: RigConfig = {
-  agent: { max_turns: 80, permission_mode: 'bypassPermissions' },
+  agent: { provider: 'binary', max_turns: 80, permission_mode: 'bypassPermissions' },
   queue: { default_phase: null, default_component: null },
   test: { require_new_tests: true },
   // demo: { enabled: true }, // DISABLED: Demo feature disabled for redesign

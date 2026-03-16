@@ -5,7 +5,10 @@
  */
 
 export { CodeAgent } from './base.agent.js';
-export { ClaudeCodeAgent } from './claude-code.agent.js';
+export { ClaudeSdkAgent } from './claude-sdk.agent.js';
+export { ClaudeBinaryAgent } from './claude-binary.agent.js';
+export { ClaudeSdkAgent as ClaudeCodeAgent } from './claude-sdk.agent.js';
+export { createAgent } from './agent-factory.js';
 export type {
   AgentCapabilities,
   AgentEvent,

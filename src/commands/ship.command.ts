@@ -11,7 +11,7 @@ import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
-import { ClaudeCodeAgent } from '../services/agents/claude-code.agent.js';
+import { createAgent } from '../services/agents/agent-factory.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { StageName } from '../types/state.types.js';
@@ -289,7 +289,7 @@ export class ShipCommand extends BaseCommand {
 
         try {
           const config = this.config.get();
-          const fixAgent = new ClaudeCodeAgent();
+          const fixAgent = createAgent(this.config.get());
           const fixSession = await fixAgent.createSession({
             prompt: fixPrompt,
             maxIterations: config.agent.max_turns,
