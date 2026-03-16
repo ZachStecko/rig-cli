@@ -324,6 +324,27 @@ export class ReviewCommand extends BaseCommand {
           }
 
           this.logger.success('All selected findings addressed.');
+
+          // Commit and push the fixes
+          const isClean = await this.git.isClean();
+          if (!isClean) {
+            this.logger.info('Committing review fixes...');
+
+            // Build detailed commit message listing each finding
+            const findingSummaries = findingsToFix.map((f, i) =>
+              `- ${f.description.split('\n')[0].substring(0, 100)}`
+            );
+            const commitMessage = [
+              `fix: address ${findingsToFix.length} code review finding${findingsToFix.length > 1 ? 's' : ''} for #${issueNumber}`,
+              '',
+              ...findingSummaries,
+            ].join('\n');
+
+            await this.git.commitAll(commitMessage);
+            this.logger.info('Pushing changes...');
+            await this.git.push();
+            this.logger.success('Review fixes committed and pushed.');
+          }
         } else {
           this.logger.info('No findings selected for fixing.');
         }

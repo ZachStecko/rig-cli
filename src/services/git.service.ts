@@ -148,6 +148,17 @@ export class GitService {
   }
 
   /**
+   * Stages all changes and commits with the given message.
+   *
+   * @param message - Commit message
+   * @throws Error if there are no changes to commit or commit fails
+   */
+  async commitAll(message: string): Promise<void> {
+    await this.git('add -A');
+    await this.git(`commit -m ${JSON.stringify(message)}`);
+  }
+
+  /**
    * Checks if a branch exists locally.
    *
    * @param branchName - Name of the branch to check
