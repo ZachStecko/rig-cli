@@ -2,31 +2,20 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-Automates the GitHub issue-to-PR pipeline using Claude Code.
+An orchestration layer on top of Claude Code, GitHub, and Git. You plan features with Claude Code, then rig-cli handles the grunt work — filing issues, implementing code, running tests, opening PRs, and reviewing changes.
 
 ---
 
 ## Workflow
 
-:
-
-```bash
-# 1. Plan with Claude Code (you do this manually in your editor)
-#    Discuss the feature, hash out the approach, agree on a plan.
-
-# 2. File the plan as a GitHub issue
-rig create-issue
-# Copy the plan you made into the prompt.
-
-# 3. Ship it — picks the issue, implements, tests, and opens a PR
-rig ship
-# pick → branch → implement → test → pr → review
-
-# 4. Review the PR — AI reviews, you triage findings, auto-fix what you approve
-rig review --pr 47
+```
+plan → create-issue → ship → review
 ```
 
-That's the loop: plan, issue, ship, review.
+1. **Plan** with Claude Code in your editor. Hash out the feature, agree on an approach.
+2. **`rig create-issue`** — paste your plan, AI structures it into a GitHub issue.
+3. **`rig ship`** — picks the issue, creates a branch, implements, tests, and opens a PR.
+4. **`rig review --pr 47`** — AI reviews the diff, you triage findings, selected fixes are applied and pushed.
 
 ---
 
