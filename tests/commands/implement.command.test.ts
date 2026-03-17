@@ -22,6 +22,7 @@ const createMockRigConfig = (overrides?: Partial<RigConfig>): RigConfig => ({
 const mockPromptBuilder = {
   assemblePrompt: vi.fn(),
   detectComponent: vi.fn(),
+  detectComponentFromConfig: vi.fn(),
   buildAllowedTools: vi.fn(),
 };
 
@@ -155,7 +156,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate process completion
@@ -194,7 +195,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate process completion
@@ -235,7 +236,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate process completion
@@ -270,7 +271,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'frontend' }, { name: 'p0' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate process completion
@@ -280,7 +281,7 @@ describe('ImplementCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['frontend', 'p0'], 'Add user authentication', undefined);
+      expect(mockPromptBuilder.detectComponentFromConfig).toHaveBeenCalledWith(['frontend', 'p0'], expect.objectContaining({}));
       expect(mockPromptBuilder.buildAllowedTools).toHaveBeenCalledWith('frontend');
     });
 
@@ -306,7 +307,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt here');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash,Grep');
       vi.mocked(mockConfig.get).mockReturnValue(createMockRigConfig({
         agent: { max_turns: 30 },
@@ -351,7 +352,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate successful process completion
@@ -394,7 +395,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate agent session error
@@ -443,7 +444,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Mock agent session to yield text events
@@ -485,7 +486,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       // Simulate process completion
@@ -521,7 +522,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       setTimeout(() => {
@@ -543,7 +544,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       setTimeout(() => {
@@ -586,7 +587,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       setTimeout(() => {
@@ -623,7 +624,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('This is a test prompt for implementing the feature');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       await command.execute({ dryRun: true });
@@ -656,7 +657,7 @@ describe('ImplementCommand', () => {
         labels: [{ name: 'backend' }],
       });
       vi.mocked(mockPromptBuilder.assemblePrompt).mockResolvedValue('Test prompt');
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockPromptBuilder.buildAllowedTools).mockReturnValue('Read,Write,Bash');
 
       await command.execute({ dryRun: true });

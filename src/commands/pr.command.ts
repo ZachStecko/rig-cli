@@ -129,7 +129,7 @@ export class PrCommand extends BaseCommand {
 
     // Get component using cached issue data
     const labels = issueData.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels, issueData.title, issueData.body);
+    const component = this.promptBuilder.detectComponentFromConfig(labels, this.config.get());
 
     // Get current branch
     const currentBranch = await this.git.currentBranch();

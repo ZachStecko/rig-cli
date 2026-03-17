@@ -8,10 +8,16 @@ import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
 import { EventEmitter } from 'events';
 
+// Mock autoCommitRigState (must be first to avoid hoisting issues)
+vi.mock('../../src/utils/git.js', () => ({
+  autoCommitRigState: vi.fn(),
+}));
+
 // Mock PromptBuilderService
 const mockPromptBuilder = {
   assembleReviewPrompt: vi.fn(),
   detectComponent: vi.fn().mockReturnValue('fullstack'),
+  detectComponentFromConfig: vi.fn().mockReturnValue('fullstack'),
   buildAllowedTools: vi.fn().mockReturnValue('Read,Write,Bash,Grep,Glob'),
 };
 
@@ -53,6 +59,9 @@ vi.mock('../../src/services/agents/agent-factory.js', () => ({
   createAgent: vi.fn(() => mockAgent),
 }));
 
+// Import mocked function after vi.mock to get the reference
+const { autoCommitRigState: mockAutoCommitRigState } = await import('../../src/utils/git.js');
+
 describe('ReviewCommand', () => {
   let command: ReviewCommand;
   let mockLogger: Logger;
@@ -77,7 +86,7 @@ describe('ReviewCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { max_turns: 20 } }),
+      get: vi.fn().mockReturnValue({ agent: { max_turns: 20 }, components: {} }),
     } as any;
 
     mockState = {
@@ -114,6 +123,8 @@ describe('ReviewCommand', () => {
 
     // Reset all mocks
     vi.clearAllMocks();
+    vi.mocked(mockAutoCommitRigState).mockReset();
+    vi.mocked(mockAutoCommitRigState).mockResolvedValue({ committed: false });
 
     command = new ReviewCommand(
       mockLogger,
@@ -523,6 +534,142 @@ describe('ReviewCommand', () => {
 
       expect(mockLogger.info).toHaveBeenCalledWith('Verdict: REJECT');
       expect(mockLogger.info).toHaveBeenCalledWith('Findings: 2 (1 high, 1 medium, 0 low)');
+    });
+
+    it('auto-commits state changes after successful review', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(true);
+      vi.mocked(mockState.read).mockResolvedValue({
+        issue_number: 42,
+        issue_title: 'Add user dashboard',
+        stage: 'review' as const,
+        stages: {
+          pick: 'completed' as const,
+          branch: 'completed' as const,
+          implement: 'completed' as const,
+          test: 'completed' as const,
+          pr: 'completed' as const,
+          review: 'in_progress' as const,
+        },
+      });
+      vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
+        'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
+      );
+      vi.mocked(mockAutoCommitRigState).mockResolvedValue({ committed: true });
+
+      const fs = await import('fs');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFile).mockImplementation((path, encoding, callback: any) => {
+        callback(null, '## Verdict: PASS\n\n## Findings\n\nNo findings.');
+      });
+
+      await command.execute();
+
+      expect(mockAutoCommitRigState).toHaveBeenCalledWith('/test/project');
+      expect(mockLogger.dim).toHaveBeenCalledWith('State changes committed to git');
+    });
+
+    it('warns when state is in gitignore', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(true);
+      vi.mocked(mockState.read).mockResolvedValue({
+        issue_number: 42,
+        issue_title: 'Add user dashboard',
+        stage: 'review' as const,
+        stages: {
+          pick: 'completed' as const,
+          branch: 'completed' as const,
+          implement: 'completed' as const,
+          test: 'completed' as const,
+          pr: 'completed' as const,
+          review: 'in_progress' as const,
+        },
+      });
+      vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
+        'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
+      );
+      vi.mocked(mockAutoCommitRigState).mockResolvedValue({
+        committed: false,
+        message: 'Warning: .rig-state.json is in .gitignore and will not be committed.'
+      });
+
+      const fs = await import('fs');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFile).mockImplementation((path, encoding, callback: any) => {
+        callback(null, '## Verdict: PASS\n\n## Findings\n\nNo findings.');
+      });
+
+      await command.execute();
+
+      expect(mockAutoCommitRigState).toHaveBeenCalledWith('/test/project');
+      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('.rig-state.json is in .gitignore'));
+    });
+
+    it('auto-commits state changes after failed review', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(true);
+      vi.mocked(mockState.read).mockResolvedValue({
+        issue_number: 42,
+        issue_title: 'Add user dashboard',
+        stage: 'review' as const,
+        stages: {
+          pick: 'completed' as const,
+          branch: 'completed' as const,
+          implement: 'completed' as const,
+          test: 'completed' as const,
+          pr: 'completed' as const,
+          review: 'in_progress' as const,
+        },
+      });
+      vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
+        'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
+      );
+      vi.mocked(mockAutoCommitRigState).mockResolvedValue({ committed: true });
+
+      mockAgent.createSession.mockResolvedValue({
+        events: (async function* () {
+          yield { type: 'text', content: 'Agent running...' };
+        })(),
+        cancel: vi.fn(),
+      });
+
+      const fs = await import('fs');
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await command.execute();
+
+      expect(mockAutoCommitRigState).toHaveBeenCalledWith('/test/project');
+      expect(mockLogger.dim).toHaveBeenCalledWith('State changes committed to git');
+    });
+
+    it('handles auto-commit errors gracefully', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(true);
+      vi.mocked(mockState.read).mockResolvedValue({
+        issue_number: 42,
+        issue_title: 'Add user dashboard',
+        stage: 'review' as const,
+        stages: {
+          pick: 'completed' as const,
+          branch: 'completed' as const,
+          implement: 'completed' as const,
+          test: 'completed' as const,
+          pr: 'completed' as const,
+          review: 'in_progress' as const,
+        },
+      });
+      vi.mocked(mockPromptBuilder.assembleReviewPrompt).mockResolvedValue(
+        'Review prompt. File: `.rig-reviews/issue-42/review-2024-01-01-120000.md`'
+      );
+      vi.mocked(mockAutoCommitRigState).mockRejectedValue(new Error('Git user.name not configured'));
+
+      const fs = await import('fs');
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(fs.readFile).mockImplementation((path, encoding, callback: any) => {
+        callback(null, '## Verdict: PASS\n\n## Findings\n\nNo findings.');
+      });
+
+      await command.execute();
+
+      expect(mockAutoCommitRigState).toHaveBeenCalledWith('/test/project');
+      expect(mockLogger.warn).toHaveBeenCalledWith('Could not auto-commit state: Git user.name not configured');
+      expect(mockLogger.success).toHaveBeenCalledWith('Code review completed for issue #42');
     });
   });
 });

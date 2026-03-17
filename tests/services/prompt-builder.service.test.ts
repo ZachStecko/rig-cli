@@ -76,14 +76,19 @@ describe('PromptBuilderService', () => {
       expect(result).toBe('fullstack');
     });
 
-    it('returns fullstack when no component labels exist (default)', () => {
-      const result = promptBuilder.detectComponent(['bug', 'priority:high']);
-      expect(result).toBe('fullstack');
+    it('returns first configured component when no component labels exist', () => {
+      const result = promptBuilder.detectComponent(['bug', 'priority:high'], ['node']);
+      expect(result).toBe('node');
     });
 
-    it('returns fullstack for empty labels array', () => {
+    it('returns backend as default when no labels and no configured components', () => {
       const result = promptBuilder.detectComponent([]);
-      expect(result).toBe('fullstack');
+      expect(result).toBe('backend');
+    });
+
+    it('returns configured component for empty labels array', () => {
+      const result = promptBuilder.detectComponent([], ['node']);
+      expect(result).toBe('node');
     });
 
     it('is case-insensitive for component labels', () => {
@@ -101,6 +106,26 @@ describe('PromptBuilderService', () => {
     it('prefers explicit fullstack label over multiple components', () => {
       const result = promptBuilder.detectComponent(['backend', 'frontend', 'fullstack']);
       expect(result).toBe('fullstack');
+    });
+
+    it('returns node for node label', () => {
+      const result = promptBuilder.detectComponent(['node']);
+      expect(result).toBe('node');
+    });
+
+    it('uses configured components when no labels match', () => {
+      const result = promptBuilder.detectComponent(['bug'], ['backend']);
+      expect(result).toBe('backend');
+    });
+
+    it('uses first configured component when multiple configured', () => {
+      const result = promptBuilder.detectComponent([], ['backend', 'frontend']);
+      expect(result).toBe('backend');
+    });
+
+    it('uses configured node component when only node is configured', () => {
+      const result = promptBuilder.detectComponent([], ['node']);
+      expect(result).toBe('node');
     });
   });
 

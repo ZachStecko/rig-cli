@@ -19,6 +19,7 @@ vi.mock('../../src/services/pr-template.service.js', () => ({
 // Mock PromptBuilderService
 const mockPromptBuilder = {
   detectComponent: vi.fn(),
+  detectComponentFromConfig: vi.fn(),
 };
 
 vi.mock('../../src/services/prompt-builder.service.js', () => ({
@@ -54,7 +55,7 @@ describe('PrCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn(),
+      get: vi.fn().mockReturnValue({ agent: { max_turns: 80 }, components: {} }),
     } as any;
 
     mockState = {
@@ -136,7 +137,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body content here');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -175,7 +176,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('Updated PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([
@@ -214,7 +215,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -251,7 +252,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -289,7 +290,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -326,7 +327,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockGit.push).mockRejectedValue(new Error('Push failed'));
 
@@ -364,7 +365,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -398,7 +399,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'backend' }, { name: 'enhancement' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -406,7 +407,7 @@ describe('PrCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend', 'enhancement'], 'Add user dashboard', undefined);
+      expect(mockPromptBuilder.detectComponentFromConfig).toHaveBeenCalledWith(['backend', 'enhancement'], expect.objectContaining({ components: {} }));
       expect(mockPrTemplate.generatePrBody).toHaveBeenCalledWith(42, 'backend');
     });
 
@@ -431,7 +432,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'fullstack' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('fullstack');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('fullstack');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
@@ -464,7 +465,7 @@ describe('PrCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-add-user-dashboard');
       vi.mocked(mockPrTemplate.generatePrBody).mockResolvedValue('PR body');
       vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);

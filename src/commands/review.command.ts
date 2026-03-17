@@ -8,6 +8,7 @@ import { GuardService } from '../services/guard.service.js';
 import { createAgent } from '../services/agents/agent-factory.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
+import { autoCommitRigState } from '../utils/git.js';
 import * as path from 'path';
 import { readFile, existsSync } from 'fs';
 import { promisify } from 'util';
@@ -220,7 +221,7 @@ export class ReviewCommand extends BaseCommand {
     // Get issue for component detection
     const issue = await this.github.viewIssue(issueNumber);
     const labels = issue.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels, issue.title, issue.body);
+    const component = this.promptBuilder.detectComponentFromConfig(labels, rigConfig);
 
     // Build allowed tools - read-only for review
     const allowedToolsReview = 'Read,Grep,Glob';
@@ -360,6 +361,18 @@ export class ReviewCommand extends BaseCommand {
         },
       });
 
+      // Auto-commit state changes
+      try {
+        const commitResult = await autoCommitRigState(this.projectRoot || process.cwd());
+        if (commitResult.committed) {
+          this.logger.dim('State changes committed to git');
+        } else if (commitResult.message) {
+          this.logger.warn(commitResult.message);
+        }
+      } catch (error) {
+        this.logger.warn(`Could not auto-commit state: ${(error as Error).message}`);
+      }
+
       console.log('');
       this.logger.success(`Code review completed for issue #${issueNumber}`);
       this.logger.dim(`Review file: ${reviewFilePath}`);
@@ -374,6 +387,18 @@ export class ReviewCommand extends BaseCommand {
           review: 'failed',
         },
       });
+
+      // Auto-commit state changes even on failure
+      try {
+        const commitResult = await autoCommitRigState(this.projectRoot || process.cwd());
+        if (commitResult.committed) {
+          this.logger.dim('State changes committed to git');
+        } else if (commitResult.message) {
+          this.logger.warn(commitResult.message);
+        }
+      } catch (commitError) {
+        this.logger.warn(`Could not auto-commit state: ${(commitError as Error).message}`);
+      }
 
       this.logger.error(`Review failed: ${(error as Error).message}`);
       this.logger.dim(`Check log: ${logFile}`);

@@ -125,7 +125,7 @@ export class DemoCommand extends BaseCommand {
       // Auto-detect from issue labels
       const issue = await this.github.viewIssue(state.issue_number);
       const labels = issue.labels.map((l: any) => l.name);
-      component = this.promptBuilder.detectComponent(labels);
+      component = this.promptBuilder.detectComponentFromConfig(labels, this.config.get());
     }
 
     this.logger.header(`Recording Demo for Issue #${issueNumber}`);

@@ -880,7 +880,17 @@ export class TestRunnerService {
         const ext = file.substring(file.lastIndexOf('.'));
         const testFile = `${base}.test${ext}`;
 
-        if (!newFiles.includes(testFile) && !existsSync(resolve(this.projectRoot, testFile))) {
+        // Also check mirror test directory (e.g., src/utils/foo.ts → tests/utils/foo.test.ts)
+        const mirrorTestFile = file.startsWith('src/')
+          ? `tests/${file.slice(4, file.lastIndexOf('.'))}.test${ext}`
+          : null;
+
+        const hasTest =
+          newFiles.includes(testFile) ||
+          existsSync(resolve(this.projectRoot, testFile)) ||
+          (mirrorTestFile && (newFiles.includes(mirrorTestFile) || existsSync(resolve(this.projectRoot, mirrorTestFile))));
+
+        if (!hasTest) {
           missingTests.push(`${file} → expected ${testFile}`);
         }
       }
