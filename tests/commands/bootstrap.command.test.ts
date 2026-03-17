@@ -59,6 +59,7 @@ describe('BootstrapCommand', () => {
 
     mockGitHub = {
       viewIssue: vi.fn(),
+      syncLabels: vi.fn().mockResolvedValue({ created: [], existing: [] }),
     } as any;
 
     mockGuard = {
@@ -145,7 +146,7 @@ describe('BootstrapCommand', () => {
 
       await command.execute({ component: 'frontend' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 1, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 2, 'Setting up frontend test infrastructure...');
     });
 
     it('bootstraps backend when component is backend', async () => {
@@ -154,7 +155,7 @@ describe('BootstrapCommand', () => {
 
       await command.execute({ component: 'backend' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 1, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 2, 'Setting up backend test infrastructure...');
     });
 
     it('bootstraps both frontend and backend when component is all', async () => {
@@ -175,10 +176,11 @@ describe('BootstrapCommand', () => {
 
       await command.execute({ component: 'all' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(3, 4, 'Setting up infra test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(4, 4, 'Setting up serverless test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 5, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(2, 5, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(3, 5, 'Setting up infra test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(4, 5, 'Setting up serverless test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(5, 5, 'Syncing labels to GitHub...');
     });
 
     it('defaults to all when no component specified', async () => {
@@ -199,10 +201,11 @@ describe('BootstrapCommand', () => {
 
       await command.execute();
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 4, 'Setting up frontend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(2, 4, 'Setting up backend test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(3, 4, 'Setting up infra test infrastructure...');
-      expect(mockLogger.step).toHaveBeenCalledWith(4, 4, 'Setting up serverless test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 5, 'Setting up frontend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(2, 5, 'Setting up backend test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(3, 5, 'Setting up infra test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(4, 5, 'Setting up serverless test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(5, 5, 'Syncing labels to GitHub...');
     });
   });
 
@@ -536,7 +539,7 @@ describe('BootstrapCommand', () => {
     it('bootstraps node component with step counter', async () => {
       await command.execute({ component: 'node' });
 
-      expect(mockLogger.step).toHaveBeenCalledWith(1, 1, 'Setting up Node.js test infrastructure...');
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 2, 'Setting up Node.js test infrastructure...');
     });
 
     it('installs vitest when not already present', async () => {
@@ -617,6 +620,46 @@ describe('BootstrapCommand', () => {
       await command.execute({ component: 'node' });
 
       expect(mockLogger.info).toHaveBeenCalledWith('Skipping node setup');
+    });
+  });
+
+  describe('label sync', () => {
+    it('syncs labels during bootstrap', async () => {
+      await command.execute({ component: 'backend' });
+
+      expect(mockGitHub.syncLabels).toHaveBeenCalled();
+      expect(mockLogger.step).toHaveBeenCalledWith(
+        expect.any(Number),
+        expect.any(Number),
+        'Syncing labels to GitHub...'
+      );
+    });
+
+    it('logs created and existing label counts', async () => {
+      vi.mocked(mockGitHub.syncLabels).mockResolvedValue({
+        created: ['P0', 'P1'],
+        existing: ['bug'],
+      });
+
+      await command.execute({ component: 'backend' });
+
+      expect(mockLogger.success).toHaveBeenCalledWith('Created 2 new labels');
+      expect(mockLogger.dim).toHaveBeenCalledWith('Updated 1 existing labels');
+    });
+
+    it('handles label sync failure gracefully', async () => {
+      vi.mocked(mockGitHub.syncLabels).mockRejectedValue(new Error('gh auth failed'));
+
+      await command.execute({ component: 'backend' });
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        'Failed to sync labels: gh auth failed'
+      );
+      expect(mockLogger.dim).toHaveBeenCalledWith(
+        'You can run "rig setup-labels" later to create labels'
+      );
+      // Should still complete successfully
+      expect(mockLogger.success).toHaveBeenCalledWith('Bootstrap complete! Test infrastructure is ready.');
     });
   });
 });

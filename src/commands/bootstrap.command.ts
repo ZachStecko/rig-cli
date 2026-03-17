@@ -11,6 +11,7 @@ import { promisify } from 'util';
 import { exec } from 'child_process';
 import * as readline from 'readline';
 import { stringify as stringifyYaml } from 'yaml';
+import { getLabelDetails } from '../types/labels.types.js';
 
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
@@ -69,13 +70,14 @@ export class BootstrapCommand extends BaseCommand {
     let nodePath: string | null = null;
     let backendType: 'go' | 'typescript' | undefined = undefined;
 
-    // Calculate total steps dynamically
+    // Calculate total steps dynamically (+1 for label sync)
     const totalSteps =
       (component === 'frontend' || component === 'all' ? 1 : 0) +
       (component === 'backend' || component === 'all' ? 1 : 0) +
       (component === 'infra' || component === 'all' ? 1 : 0) +
       (component === 'serverless' || component === 'all' ? 1 : 0) +
-      (component === 'node' ? 1 : 0);
+      (component === 'node' ? 1 : 0) +
+      1; // label sync
 
     let currentStep = 0;
 
@@ -118,6 +120,9 @@ export class BootstrapCommand extends BaseCommand {
     if (frontendPath || backendPath || infraPath || serverlessPath || nodePath) {
       await this.saveComponentPaths(frontendPath, backendPath, infraPath, serverlessPath, backendType, nodePath);
     }
+
+    // Sync labels to GitHub
+    await this.syncLabels(++currentStep, totalSteps);
 
     console.log('');
     this.logger.success('Bootstrap complete! Test infrastructure is ready.');
@@ -792,6 +797,36 @@ export const handlers = [
     }
 
     await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+  }
+
+  /**
+   * Syncs rig labels to the GitHub repository.
+   *
+   * @param step - Current step number
+   * @param totalSteps - Total number of steps
+   */
+  private async syncLabels(step: number, totalSteps: number): Promise<void> {
+    this.logger.step(step, totalSteps, 'Syncing labels to GitHub...');
+    console.log('');
+
+    try {
+      const labels = getLabelDetails();
+      const result = await this.github.syncLabels(labels);
+
+      if (result.created.length > 0) {
+        this.logger.success(`Created ${result.created.length} new labels`);
+      }
+      if (result.existing.length > 0) {
+        this.logger.dim(`Updated ${result.existing.length} existing labels`);
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to sync labels: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+      this.logger.dim('You can run "rig setup-labels" later to create labels');
+    }
+
+    console.log('');
   }
 
   /**

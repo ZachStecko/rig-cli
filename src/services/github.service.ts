@@ -467,6 +467,65 @@ export class GitHubService {
   }
 
   /**
+   * Lists all label names on the repository.
+   *
+   * @returns Array of label names
+   * @throws Error if gh command fails
+   */
+  async listLabels(): Promise<string[]> {
+    const result = await this.gh('label list --json name');
+    try {
+      const labels = JSON.parse(result.stdout) as { name: string }[];
+      return labels.map(l => l.name);
+    } catch (error) {
+      throw new Error(
+        `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Syncs labels to the GitHub repository.
+   * Uses --force so existing labels are updated and missing ones are created.
+   *
+   * @param labels - Labels to sync with name, optional color and description
+   * @returns Object with arrays of created and existing label names
+   */
+  async syncLabels(
+    labels: { name: string; color?: string; description?: string }[]
+  ): Promise<{ created: string[]; existing: string[] }> {
+    const existingLabels = await this.listLabels();
+    const existingSet = new Set(existingLabels);
+
+    const created: string[] = [];
+    const existing: string[] = [];
+
+    for (const label of labels) {
+      this.validateLabel(label.name);
+
+      const args = ['label', 'create', `"${this.escapeQuotes(label.name)}"`, '--force'];
+
+      if (label.color) {
+        args.push('--color', label.color);
+      }
+
+      if (label.description) {
+        args.push('--description', `"${this.escapeQuotes(label.description)}"`);
+      }
+
+      await this.gh(args.join(' '));
+
+      if (existingSet.has(label.name)) {
+        existing.push(label.name);
+      } else {
+        created.push(label.name);
+      }
+    }
+
+    return { created, existing };
+  }
+
+  /**
    * Validates a git branch name to prevent command injection.
    * Uses the same validation as GitService for consistency.
    *

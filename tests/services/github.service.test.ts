@@ -728,4 +728,133 @@ describe('GitHubService', () => {
       );
     });
   });
+
+  describe('listLabels', () => {
+    it('returns label names from repository', async () => {
+      mockExec.mockResolvedValue({
+        stdout: JSON.stringify([{ name: 'bug' }, { name: 'enhancement' }]),
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await githubService.listLabels();
+
+      expect(result).toEqual(['bug', 'enhancement']);
+      expect(mockExec).toHaveBeenCalledWith(
+        'gh label list --json name',
+        { cwd: projectRoot }
+      );
+    });
+
+    it('returns empty array when no labels exist', async () => {
+      mockExec.mockResolvedValue({
+        stdout: '[]',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await githubService.listLabels();
+
+      expect(result).toEqual([]);
+    });
+
+    it('throws when JSON parsing fails', async () => {
+      mockExec.mockResolvedValue({
+        stdout: 'invalid json{',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      await expect(githubService.listLabels()).rejects.toThrow(
+        'Failed to parse GitHub CLI JSON output'
+      );
+    });
+  });
+
+  describe('syncLabels', () => {
+    it('creates labels and reports created vs existing', async () => {
+      // First call: listLabels
+      mockExec.mockResolvedValueOnce({
+        stdout: JSON.stringify([{ name: 'bug' }]),
+        stderr: '',
+        exitCode: 0,
+      });
+      // Second call: gh label create for 'bug' (existing)
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+      // Third call: gh label create for 'backend' (new)
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await githubService.syncLabels([
+        { name: 'bug', color: 'd73a4a', description: 'Something broken' },
+        { name: 'backend', color: '0052cc', description: 'Backend changes' },
+      ]);
+
+      expect(result.existing).toEqual(['bug']);
+      expect(result.created).toEqual(['backend']);
+    });
+
+    it('calls gh label create with --force for each label', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: '[]',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      await githubService.syncLabels([
+        { name: 'P0', color: 'b60205', description: 'Critical' },
+      ]);
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'gh label create "P0" --force --color b60205 --description "Critical"',
+        { cwd: projectRoot }
+      );
+    });
+
+    it('handles labels without color and description', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: '[]',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      await githubService.syncLabels([
+        { name: 'simple' },
+      ]);
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'gh label create "simple" --force',
+        { cwd: projectRoot }
+      );
+    });
+
+    it('throws on invalid label names', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: '[]',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      await expect(
+        githubService.syncLabels([{ name: 'bad;label' }])
+      ).rejects.toThrow('Invalid label');
+    });
+  });
 });

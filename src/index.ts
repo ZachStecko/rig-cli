@@ -28,6 +28,7 @@ import { ReviewCommand } from './commands/review.command.js';
 import { ShipCommand } from './commands/ship.command.js';
 import { BootstrapCommand } from './commands/bootstrap.command.js';
 import { CreateIssueCommand } from './commands/create-issue.command.js';
+import { SetupLabelsCommand } from './commands/setup-labels.command.js';
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -215,6 +216,17 @@ program
     logger.setVerbose(config.get().verbose || false);
     const createIssueCommand = new CreateIssueCommand(logger, config, state, git, github, guard, projectRoot);
     await createIssueCommand.execute();
+  });
+
+// Register setup-labels command
+program
+  .command('setup-labels')
+  .description('Create rig labels on GitHub repo')
+  .action(async () => {
+    await config.load();
+    logger.setVerbose(config.get().verbose || false);
+    const setupLabelsCommand = new SetupLabelsCommand(logger, config, state, git, github, guard, projectRoot);
+    await setupLabelsCommand.execute();
   });
 
 program.parse();

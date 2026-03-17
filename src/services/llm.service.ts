@@ -1,6 +1,7 @@
 import { CodeAgent } from './agents/base.agent.js';
 import { createAgent } from './agents/agent-factory.js';
 import { RigConfig } from '../types/config.types.js';
+import { getAllValidLabels, isValidLabel } from '../types/labels.types.js';
 
 /**
  * Response from structuring an issue description.
@@ -10,6 +11,8 @@ export interface StructuredIssue {
   title: string;
   /** The structured issue body */
   body: string;
+  /** Labels to apply to the issue */
+  labels?: string[];
 }
 
 // GitHub's title length limit
@@ -57,9 +60,13 @@ export class LLMService {
 
     // Build the prompt for structuring the issue, with JSON output instruction
     const prompt = this.buildIssuePrompt(rawDescription);
+    const validLabels = getAllValidLabels();
     const jsonPrompt = `${prompt}
 
-Respond with ONLY a valid JSON object with "title" and "body" fields. No markdown fences, no explanation.`;
+Respond with ONLY a valid JSON object with "title", "body", and "labels" fields. No markdown fences, no explanation.
+
+For "labels", pick 1-4 from this list based on the issue content: ${validLabels.join(', ')}
+Always include one component label (backend, frontend, fullstack, devnet, node, infra, serverless) and one type label (bug, enhancement, feature, refactor, docs, chore, test).`;
 
     // Call Claude via the agent
     if (!this.agent.prompt) {
@@ -103,6 +110,11 @@ Respond with ONLY a valid JSON object with "title" and "body" fields. No markdow
     // Enforce GitHub's title length limit
     if (structured.title.length > GITHUB_TITLE_MAX_LENGTH) {
       structured.title = structured.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
+    }
+
+    // Filter labels to only valid ones
+    if (structured.labels) {
+      structured.labels = structured.labels.filter(l => isValidLabel(l));
     }
 
     return structured;
