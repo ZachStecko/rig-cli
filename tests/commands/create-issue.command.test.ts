@@ -219,6 +219,7 @@ describe('CreateIssueCommand', () => {
       expect(mockGitHub.createIssue).toHaveBeenCalledWith({
         title: mockStructured.title,
         body: mockStructured.body,
+        labels: undefined,
       });
       expect(mockLogger.success).toHaveBeenCalledWith(`Issue #${mockIssueNumber} created successfully!`);
       expect(consoleLogSpy).toHaveBeenCalledWith(`  https://github.com/${mockRepoName}/issues/${mockIssueNumber}`);
@@ -377,12 +378,268 @@ export class AuthService {
       expect(mockGitHub.createIssue).toHaveBeenCalledWith({
         title: mockStructured.title,
         body: mockStructured.body,
+        labels: undefined,
       });
 
       const issueBody = vi.mocked(mockGitHub.createIssue).mock.calls[0][0].body;
       expect(issueBody).toContain('```typescript');
       expect(issueBody).toMatch(/```typescript[\s\S]*?```/);
       expect(issueBody).not.toMatch(/^typescript$/m);
+    });
+
+    it('creates issue with default labels when configured', async () => {
+      const mockDescription = 'Add authentication feature';
+      const mockStructured = {
+        title: 'Add user authentication',
+        body: 'Implement OAuth authentication for users.',
+      };
+      const mockIssueNumber = 42;
+      const mockRepoName = 'owner/repo';
+      const defaultLabels = ['rig-generated', 'enhancement'];
+
+      vi.mocked(mockConfig.get).mockReturnValue({
+        agent: { provider: 'binary' },
+        verbose: false,
+        defaultLabels,
+      } as any);
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'line') {
+            callback(mockDescription);
+          }
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn((question, answerCallback) => {
+          answerCallback('y');
+        }),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+
+      mockLLMService.isAvailable.mockResolvedValue(true);
+      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
+      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
+      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
+
+      await command.execute();
+
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: mockStructured.title,
+        body: mockStructured.body,
+        labels: defaultLabels,
+      });
+      expect(mockLogger.config).toHaveBeenCalledWith('Default labels', 'rig-generated, enhancement');
+    });
+
+    it('creates issue without labels when defaultLabels is empty array', async () => {
+      const mockDescription = 'Add authentication feature';
+      const mockStructured = {
+        title: 'Add user authentication',
+        body: 'Implement OAuth authentication for users.',
+      };
+      const mockIssueNumber = 42;
+      const mockRepoName = 'owner/repo';
+
+      vi.mocked(mockConfig.get).mockReturnValue({
+        agent: { provider: 'binary' },
+        verbose: false,
+        defaultLabels: [],
+      } as any);
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'line') {
+            callback(mockDescription);
+          }
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn((question, answerCallback) => {
+          answerCallback('y');
+        }),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+
+      mockLLMService.isAvailable.mockResolvedValue(true);
+      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
+      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
+      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
+
+      await command.execute();
+
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: mockStructured.title,
+        body: mockStructured.body,
+        labels: undefined,
+      });
+      expect(mockLogger.config).not.toHaveBeenCalledWith('Default labels', expect.anything());
+    });
+
+    it('creates issue without labels when defaultLabels is undefined', async () => {
+      const mockDescription = 'Add authentication feature';
+      const mockStructured = {
+        title: 'Add user authentication',
+        body: 'Implement OAuth authentication for users.',
+      };
+      const mockIssueNumber = 42;
+      const mockRepoName = 'owner/repo';
+
+      vi.mocked(mockConfig.get).mockReturnValue({
+        agent: { provider: 'binary' },
+        verbose: false,
+      } as any);
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'line') {
+            callback(mockDescription);
+          }
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn((question, answerCallback) => {
+          answerCallback('y');
+        }),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+
+      mockLLMService.isAvailable.mockResolvedValue(true);
+      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
+      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
+      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
+
+      await command.execute();
+
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: mockStructured.title,
+        body: mockStructured.body,
+        labels: undefined,
+      });
+      expect(mockLogger.config).not.toHaveBeenCalledWith('Default labels', expect.anything());
+    });
+
+    it('rejects invalid labels and provides helpful error message', async () => {
+      const invalidLabels = ['invalid-label', 'foo', 'bar'];
+
+      vi.mocked(mockConfig.get).mockReturnValue({
+        agent: { provider: 'binary' },
+        verbose: false,
+        defaultLabels: invalidLabels,
+      } as any);
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn(),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+
+      await command.execute();
+
+      expect(mockLogger.error).toHaveBeenCalledWith('Invalid labels in config: invalid-label, foo, bar');
+      expect(mockLogger.info).toHaveBeenCalledWith('Valid labels are defined in src/types/labels.types.ts');
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Examples:'));
+      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
+    });
+
+    it('accepts all valid labels from the defined set', async () => {
+      const mockDescription = 'Add authentication feature';
+      const mockStructured = {
+        title: 'Add user authentication',
+        body: 'Implement OAuth authentication for users.',
+      };
+      const mockIssueNumber = 42;
+      const mockRepoName = 'owner/repo';
+      const validLabels = ['backend', 'enhancement', 'P0', 'Phase 1: MVP', 'rig-generated'];
+
+      vi.mocked(mockConfig.get).mockReturnValue({
+        agent: { provider: 'binary' },
+        verbose: false,
+        defaultLabels: validLabels,
+      } as any);
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'line') {
+            callback(mockDescription);
+          }
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn((question, answerCallback) => {
+          answerCallback('y');
+        }),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+
+      mockLLMService.isAvailable.mockResolvedValue(true);
+      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
+      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
+      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
+
+      await command.execute();
+
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: mockStructured.title,
+        body: mockStructured.body,
+        labels: validLabels,
+      });
+      expect(mockLogger.error).not.toHaveBeenCalledWith(expect.stringContaining('Invalid labels'));
+    });
+
+    it('rejects mixed valid and invalid labels', async () => {
+      const mixedLabels = ['backend', 'invalid-label', 'enhancement', 'foo'];
+
+      vi.mocked(mockConfig.get).mockReturnValue({
+        agent: { provider: 'binary' },
+        verbose: false,
+        defaultLabels: mixedLabels,
+      } as any);
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn(),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+
+      await command.execute();
+
+      expect(mockLogger.error).toHaveBeenCalledWith('Invalid labels in config: invalid-label, foo');
+      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
     });
   });
 });

@@ -6,6 +6,7 @@ import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
 import { LLMService } from '../services/llm.service.js';
+import { isValidLabel, getAllValidLabels } from '../types/labels.types.js';
 
 /**
  * CreateIssueCommand handles interactive issue creation with LLM-powered structuring.
@@ -49,6 +50,19 @@ export class CreateIssueCommand extends BaseCommand {
 
     this.logger.config('Agent provider', rigConfig.agent.provider || 'binary');
     this.logger.config('Verbose', verbose);
+    const defaultLabels = rigConfig.defaultLabels || [];
+
+    // Validate labels against defined constants
+    if (defaultLabels.length > 0) {
+      const invalidLabels = defaultLabels.filter(label => !isValidLabel(label));
+      if (invalidLabels.length > 0) {
+        this.logger.error(`Invalid labels in config: ${invalidLabels.join(', ')}`);
+        this.logger.info('Valid labels are defined in src/types/labels.types.ts');
+        this.logger.info(`Examples: ${getAllValidLabels().slice(0, 10).join(', ')}, ...`);
+        return;
+      }
+      this.logger.config('Default labels', defaultLabels.join(', '));
+    }
 
     // Get raw description from user
     this.logger.info('Describe the issue in your own words (multiline input):');
@@ -102,6 +116,7 @@ export class CreateIssueCommand extends BaseCommand {
       const issueNumber = await this.github.createIssue({
         title: structured.title,
         body: structured.body,
+        labels: defaultLabels.length > 0 ? defaultLabels : undefined,
       });
 
       console.log('');
