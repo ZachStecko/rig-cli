@@ -100,11 +100,18 @@ describe('ClaudeBinaryAgent', () => {
   });
 
   describe('prompt', () => {
-    it('delegates to ClaudeService.prompt', async () => {
+    it('delegates to ClaudeService.prompt with default timeout', async () => {
       mockClaudeService.prompt.mockResolvedValue('response text');
       const result = await agent.prompt('test prompt');
       expect(result).toBe('response text');
-      expect(mockClaudeService.prompt).toHaveBeenCalledWith('test prompt', { verbose: false });
+      expect(mockClaudeService.prompt).toHaveBeenCalledWith('test prompt', { verbose: false, timeoutMs: 120_000 });
+    });
+
+    it('forwards custom timeoutMs to ClaudeService.prompt', async () => {
+      const customAgent = new ClaudeBinaryAgent(false, 300_000);
+      mockClaudeService.prompt.mockResolvedValue('response text');
+      await customAgent.prompt('test prompt');
+      expect(mockClaudeService.prompt).toHaveBeenCalledWith('test prompt', { verbose: false, timeoutMs: 300_000 });
     });
   });
 

@@ -331,6 +331,8 @@ describe('TestCommand', () => {
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: false,
         output: 'Test suite failed',
+        steps: [{ success: false, output: 'lint errors', step: 'Frontend lint' }],
+        failedSteps: [{ success: false, output: 'lint errors', step: 'Frontend lint' }],
       });
 
       await command.execute();
@@ -342,7 +344,8 @@ describe('TestCommand', () => {
         }),
       }));
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Tests failed: Tests failed');
+      expect(mockLogger.error).toHaveBeenCalledWith('Frontend lint failed:');
+      expect(mockLogger.error).toHaveBeenCalledWith('Tests failed: Failed steps: Frontend lint');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 

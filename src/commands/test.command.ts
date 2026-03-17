@@ -158,7 +158,16 @@ export class TestCommand extends BaseCommand {
       }
 
       if (!result.success) {
-        throw new Error('Tests failed');
+        // Report which steps failed with their output
+        for (const failed of result.failedSteps) {
+          this.logger.error(`${failed.step || 'Unknown step'} failed:`);
+          if (failed.output) {
+            console.log(failed.output);
+            console.log('');
+          }
+        }
+        const failedNames = result.failedSteps.map(s => s.step).filter(Boolean).join(', ');
+        throw new Error(`Failed steps: ${failedNames || 'unknown'}`);
       }
 
       // List new test files
