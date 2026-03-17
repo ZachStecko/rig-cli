@@ -103,11 +103,10 @@ export class CreateIssueCommand extends BaseCommand {
     // Create the issue
     try {
       this.logger.command('gh issue create');
-      const labels = rigConfig.defaultLabels || [];
       const issueNumber = await this.github.createIssue({
         title: structured.title,
         body: structured.body,
-        labels: labels.length > 0 ? labels : undefined,
+        labels: defaultLabels.length > 0 ? defaultLabels : undefined,
       });
 
       console.log('');
