@@ -36,4 +36,4 @@ export interface ScoredIssue {
  * Component type detected from issue labels.
  * Used to determine which tests to run and which demo to record.
  */
-export type ComponentType = 'backend' | 'frontend' | 'devnet' | 'fullstack';
+export type ComponentType = 'backend' | 'frontend' | 'devnet' | 'fullstack' | 'node';

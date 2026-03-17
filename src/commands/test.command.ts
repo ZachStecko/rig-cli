@@ -115,7 +115,7 @@ export class TestCommand extends BaseCommand {
 
     if (options?.component) {
       // Validate component option
-      const validComponents: ComponentType[] = ['backend', 'frontend', 'devnet', 'fullstack'];
+      const validComponents: ComponentType[] = ['backend', 'frontend', 'devnet', 'fullstack', 'node'];
       if (!validComponents.includes(options.component as ComponentType)) {
         this.logger.error(`Invalid component: ${options.component}. Must be one of: ${validComponents.join(', ')}`);
         process.exit(1);

@@ -489,6 +489,166 @@ export class TestRunnerService {
   }
 
   /**
+   * Runs Node.js project linting.
+   *
+   * Uses lint_command from component config if available, otherwise defaults to npm run lint.
+   *
+   * @returns Test result with success status and output
+   */
+  async runNodeLint(): Promise<TestResult> {
+    const rigConfig = this.config.get();
+    const nodeConfig = rigConfig.components?.node;
+
+    if (!nodeConfig) {
+      return { success: true, output: 'Node not configured', skipped: true };
+    }
+
+    this.validatePath(nodeConfig.path);
+
+    const nodeDir = resolve(this.projectRoot, nodeConfig.path);
+
+    if (!existsSync(nodeDir)) {
+      return { success: true, output: '', skipped: true };
+    }
+
+    const lintCommand = nodeConfig.lint_command || 'npm run lint';
+
+    this.validateCommand(lintCommand);
+
+    this.logger.config('Node directory', nodeConfig.path);
+    this.logger.config('Lint command', lintCommand);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${nodeDir}" && ${lintCommand}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Node lint', elapsed);
+
+    const combinedOutput = result.stdout + result.stderr;
+    const hasErrors = this.lintOutputHasErrors(combinedOutput);
+
+    if (result.exitCode !== 0 && !hasErrors) {
+      this.logger.warn('Lint produced warnings (non-fatal)');
+    }
+
+    return {
+      success: result.exitCode === 0 || !hasErrors,
+      output: combinedOutput,
+    };
+  }
+
+  /**
+   * Runs Node.js project build check.
+   *
+   * Uses build_command from component config if available, otherwise defaults to npm run build.
+   *
+   * @returns Test result with success status and output
+   */
+  async runNodeBuild(): Promise<TestResult> {
+    const rigConfig = this.config.get();
+    const nodeConfig = rigConfig.components?.node;
+
+    if (!nodeConfig) {
+      return { success: true, output: 'Node not configured', skipped: true };
+    }
+
+    this.validatePath(nodeConfig.path);
+
+    const nodeDir = resolve(this.projectRoot, nodeConfig.path);
+
+    if (!existsSync(nodeDir)) {
+      return { success: true, output: '', skipped: true };
+    }
+
+    const buildCommand = nodeConfig.build_command || 'npm run build';
+
+    this.validateCommand(buildCommand);
+
+    this.logger.config('Node directory', nodeConfig.path);
+    this.logger.config('Build command', buildCommand);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${nodeDir}" && ${buildCommand}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Node build', elapsed);
+
+    return {
+      success: result.exitCode === 0,
+      output: result.stdout + result.stderr,
+    };
+  }
+
+  /**
+   * Runs Node.js project tests.
+   *
+   * Uses test_command from component config.
+   *
+   * @returns Test result with success status and output
+   */
+  async runNodeTests(): Promise<TestResult> {
+    const rigConfig = this.config.get();
+    const nodeConfig = rigConfig.components?.node;
+
+    if (!nodeConfig) {
+      return { success: true, output: 'Node not configured', skipped: true };
+    }
+
+    this.validatePath(nodeConfig.path);
+
+    const nodeDir = resolve(this.projectRoot, nodeConfig.path);
+
+    if (!existsSync(nodeDir)) {
+      return { success: true, output: '', skipped: true };
+    }
+
+    // Check if test script exists (for npm-based commands)
+    if (nodeConfig.test_command.includes('npm')) {
+      const packageJsonPath = resolve(nodeDir, 'package.json');
+      if (!existsSync(packageJsonPath)) {
+        return {
+          success: true,
+          output: 'No package.json found',
+          skipped: true,
+        };
+      }
+
+      try {
+        const packageJson = JSON.parse(await readFile(packageJsonPath, 'utf-8'));
+        if (!packageJson.scripts?.test) {
+          return {
+            success: true,
+            output: 'No test script in package.json',
+            skipped: true,
+          };
+        }
+      } catch {
+        return {
+          success: true,
+          output: 'Could not read package.json',
+          skipped: true,
+        };
+      }
+    }
+
+    this.validateCommand(nodeConfig.test_command);
+
+    this.logger.config('Node directory', nodeConfig.path);
+    this.logger.config('Test command', nodeConfig.test_command);
+
+    const startTime = Date.now();
+    const result = await exec(`cd "${nodeDir}" && ${nodeConfig.test_command}`);
+    const elapsed = Date.now() - startTime;
+
+    this.logger.timing('Node tests', elapsed);
+
+    return {
+      success: result.exitCode === 0,
+      output: result.stdout + result.stderr,
+    };
+  }
+
+  /**
    * Runs devnet tests.
    *
    * Checks if devnet directory exists and runs `npx vitest run`.
@@ -531,7 +691,7 @@ export class TestRunnerService {
    * @param component - Component type to test
    * @returns Test result with success status and combined output
    */
-  async runAllTests(component: 'backend' | 'frontend' | 'devnet' | 'fullstack'): Promise<AggregateTestResult> {
+  async runAllTests(component: 'backend' | 'frontend' | 'devnet' | 'fullstack' | 'node'): Promise<AggregateTestResult> {
     const results: TestResult[] = [];
 
     // Ensure Docker is running if testing backend (may need testcontainers)
@@ -545,6 +705,11 @@ export class TestRunnerService {
 
     if (component === 'devnet') {
       results.push({ ...await this.runDevnetTests(), step: 'Devnet tests' });
+      results.push({ ...await this.checkTestCoverage(component), step: 'Test coverage' });
+    } else if (component === 'node') {
+      results.push({ ...await this.runNodeLint(), step: 'Node lint' });
+      results.push({ ...await this.runNodeBuild(), step: 'Node build' });
+      results.push({ ...await this.runNodeTests(), step: 'Node tests' });
       results.push({ ...await this.checkTestCoverage(component), step: 'Test coverage' });
     } else {
       if (component === 'backend' || component === 'fullstack') {

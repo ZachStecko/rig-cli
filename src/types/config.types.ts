@@ -71,6 +71,7 @@ export interface ComponentsConfig {
   backend?: ComponentConfig;
   infra?: ComponentConfig;
   serverless?: ComponentConfig;
+  node?: ComponentConfig;
 }
 
 /**
