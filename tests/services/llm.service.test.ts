@@ -167,9 +167,8 @@ describe('LLMService', () => {
       const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
 
       // Verify prompt includes instructions for proper code fences
-      expect(promptArg).toContain('ALWAYS use proper markdown code fences with triple backticks and language identifier');
       expect(promptArg).toContain('```typescript');
-      expect(promptArg).toContain('ALWAYS use proper markdown code fences: ```language for opening and ``` for closing');
+      expect(promptArg).toContain('ALWAYS use ```language code fences');
     });
 
     it('generates body with proper code fence formatting when LLM responds correctly', async () => {
@@ -211,7 +210,7 @@ export class AuthService {
       await llmService.structureIssue('Add authentication');
 
       const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
-      expect(promptArg).toContain('never output just "typescript" or "javascript" without the backticks');
+      expect(promptArg).toContain('never just "typescript" without backticks');
     });
   });
 });
