@@ -19,6 +19,7 @@ vi.mock('../../src/services/demo-recorder.service.js', () => ({
 // Mock PromptBuilderService
 const mockPromptBuilder = {
   detectComponent: vi.fn(),
+  detectComponentFromConfig: vi.fn(),
 };
 
 vi.mock('../../src/services/prompt-builder.service.js', () => ({
@@ -49,7 +50,7 @@ describe('DemoCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn(),
+      get: vi.fn().mockReturnValue({ agent: { max_turns: 80 }, components: {} }),
     } as any;
 
     mockState = {
@@ -119,7 +120,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
         demoPath: '/test/project/.rig-reviews/issue-42/demo-2024-01-01-120000.gif',
@@ -127,7 +128,7 @@ describe('DemoCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['frontend']);
+      expect(mockPromptBuilder.detectComponentFromConfig).toHaveBeenCalledWith(['frontend'], expect.objectContaining({ components: {} }));
       expect(mockDemoRecorder.recordDemo).toHaveBeenCalledWith(42, 'frontend');
     });
 
@@ -156,7 +157,7 @@ describe('DemoCommand', () => {
       await command.execute({ component: 'backend' });
 
       expect(mockGitHub.viewIssue).not.toHaveBeenCalled();
-      expect(mockPromptBuilder.detectComponent).not.toHaveBeenCalled();
+      expect(mockPromptBuilder.detectComponentFromConfig).not.toHaveBeenCalled();
       expect(mockDemoRecorder.recordDemo).toHaveBeenCalledWith(42, 'backend');
     });
 
@@ -193,7 +194,7 @@ describe('DemoCommand', () => {
         title: 'Add feature X',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
         demoPath: '/test/project/.rig-reviews/issue-99/demo.gif',
@@ -233,7 +234,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
       });
@@ -269,7 +270,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
       });
@@ -307,7 +308,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
         demoPath: '/test/project/.rig-reviews/issue-42/demo.gif',
@@ -347,7 +348,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'frontend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('frontend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('frontend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: false,
       });
@@ -387,7 +388,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
         demoPath: '/test/project/.rig-reviews/issue-42/demo-2024-01-01-120000.gif',
@@ -420,7 +421,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'devnet' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('devnet');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('devnet');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
         skipped: true,
@@ -454,7 +455,7 @@ describe('DemoCommand', () => {
         title: 'Add user dashboard',
         labels: [{ name: 'fullstack' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('fullstack');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('fullstack');
       vi.mocked(mockDemoRecorder.recordDemo).mockResolvedValue({
         success: true,
       });

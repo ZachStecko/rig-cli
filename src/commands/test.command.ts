@@ -9,6 +9,7 @@ import { TestRunnerService } from '../services/test-runner.service.js';
 import { PromptBuilderService } from '../services/prompt-builder.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
 import { ComponentType } from '../types/issue.types.js';
+import { autoCommitRigState } from '../utils/git.js';
 
 /**
  * TestCommand runs tests for the current implementation.
@@ -125,7 +126,7 @@ export class TestCommand extends BaseCommand {
     } else {
       // Auto-detect from issue labels using cached issue data
       const labels = issueData.labels.map((l: any) => l.name);
-      component = this.promptBuilder.detectComponent(labels, issueData.title, issueData.body);
+      component = this.promptBuilder.detectComponentFromConfig(labels, this.config.get());
     }
 
     this.logger.header(`Testing Issue #${issueNumber}`);
@@ -193,6 +194,18 @@ export class TestCommand extends BaseCommand {
         },
       });
 
+      // Auto-commit state changes
+      try {
+        const commitResult = await autoCommitRigState(this.projectRoot || process.cwd());
+        if (commitResult.committed) {
+          this.logger.dim('State changes committed to git');
+        } else if (commitResult.message) {
+          this.logger.warn(commitResult.message);
+        }
+      } catch (error) {
+        this.logger.warn(`Could not auto-commit state: ${(error as Error).message}`);
+      }
+
       console.log('');
       this.logger.success(`Tests passed for issue #${issueNumber}`);
       this.logger.info("Run 'rig demo' to record a demo, or continue with next stage.");
@@ -206,6 +219,18 @@ export class TestCommand extends BaseCommand {
           test: 'failed',
         },
       });
+
+      // Auto-commit state changes even on failure
+      try {
+        const commitResult = await autoCommitRigState(this.projectRoot || process.cwd());
+        if (commitResult.committed) {
+          this.logger.dim('State changes committed to git');
+        } else if (commitResult.message) {
+          this.logger.warn(commitResult.message);
+        }
+      } catch (commitError) {
+        this.logger.warn(`Could not auto-commit state: ${(commitError as Error).message}`);
+      }
 
       this.logger.error(`Tests failed: ${(error as Error).message}`);
       this.logger.dim("Fix the issues and run 'rig test' again.");

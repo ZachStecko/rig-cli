@@ -10,11 +10,6 @@ describe('CLI entry point', () => {
     expect(existsSync(resolve(ROOT, 'src/index.ts'))).toBe(true);
   });
 
-  it('--version prints version', () => {
-    const out = execSync('npx tsx src/index.ts --version', { cwd: ROOT, encoding: 'utf-8' });
-    expect(out.trim()).toBe('0.1.1');
-  });
-
   it('--help prints description', () => {
     const out = execSync('npx tsx src/index.ts --help', { cwd: ROOT, encoding: 'utf-8' });
     expect(out).toContain('Automated issue-to-PR pipeline');

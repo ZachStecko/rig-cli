@@ -221,7 +221,7 @@ export class ReviewCommand extends BaseCommand {
     // Get issue for component detection
     const issue = await this.github.viewIssue(issueNumber);
     const labels = issue.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels, issue.title, issue.body);
+    const component = this.promptBuilder.detectComponentFromConfig(labels, rigConfig);
 
     // Build allowed tools - read-only for review
     const allowedToolsReview = 'Read,Grep,Glob';

@@ -17,6 +17,7 @@ vi.mock('../../src/utils/git.js', () => ({
 const mockPromptBuilder = {
   assembleReviewPrompt: vi.fn(),
   detectComponent: vi.fn().mockReturnValue('fullstack'),
+  detectComponentFromConfig: vi.fn().mockReturnValue('fullstack'),
   buildAllowedTools: vi.fn().mockReturnValue('Read,Write,Bash,Grep,Glob'),
 };
 
@@ -85,7 +86,7 @@ describe('ReviewCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { max_turns: 20 } }),
+      get: vi.fn().mockReturnValue({ agent: { max_turns: 20 }, components: {} }),
     } as any;
 
     mockState = {
