@@ -139,11 +139,11 @@ export class ImplementCommand extends BaseCommand {
     // Get issue for component detection
     const issue = await this.github.viewIssue(state.issue_number);
     const labels = issue.labels.map((l: any) => l.name);
-    const component = this.promptBuilder.detectComponent(labels, issue.title, issue.body);
+    const rigConfig = this.config.get();
+    const component = this.promptBuilder.detectComponentFromConfig(labels, rigConfig);
     const allowedTools = this.promptBuilder.buildAllowedTools(component);
 
     // Get max turns, verbose, and permission mode from config
-    const rigConfig = this.config.get();
     const maxTurns = rigConfig.agent.max_turns || 20;
     const verbose = rigConfig.verbose || false;
     const permissionMode = rigConfig.agent.permission_mode || 'default';

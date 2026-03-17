@@ -20,6 +20,7 @@ vi.mock('../../src/services/test-runner.service.js', () => ({
 // Mock PromptBuilderService
 const mockPromptBuilder = {
   detectComponent: vi.fn(),
+  detectComponentFromConfig: vi.fn(),
 };
 
 vi.mock('../../src/services/prompt-builder.service.js', () => ({
@@ -50,7 +51,7 @@ describe('TestCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn(),
+      get: vi.fn().mockReturnValue({ agent: { max_turns: 80 }, components: {} }),
     } as any;
 
     mockState = {
@@ -119,7 +120,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: 'All tests passed',
@@ -128,7 +129,7 @@ describe('TestCommand', () => {
 
       await command.execute();
 
-      expect(mockPromptBuilder.detectComponent).toHaveBeenCalledWith(['backend'], 'Add user authentication', undefined);
+      expect(mockPromptBuilder.detectComponentFromConfig).toHaveBeenCalledWith(['backend'], expect.objectContaining({ components: {} }));
       expect(mockTestRunner.runAllTests).toHaveBeenCalledWith('backend');
     });
 
@@ -161,7 +162,7 @@ describe('TestCommand', () => {
 
       await command.execute({ component: 'frontend' });
 
-      expect(mockPromptBuilder.detectComponent).not.toHaveBeenCalled();
+      expect(mockPromptBuilder.detectComponentFromConfig).not.toHaveBeenCalled();
       expect(mockTestRunner.runAllTests).toHaveBeenCalledWith('frontend');
     });
 
@@ -239,7 +240,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: '',
@@ -276,7 +277,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: '',
@@ -315,7 +316,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: '',
@@ -355,7 +356,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: false,
         output: 'Test suite failed',
@@ -398,7 +399,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: 'Test output here...',
@@ -431,7 +432,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: '',
@@ -469,7 +470,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: '',
@@ -502,7 +503,7 @@ describe('TestCommand', () => {
         title: 'Add user authentication',
         labels: [{ name: 'backend' }],
       });
-      vi.mocked(mockPromptBuilder.detectComponent).mockReturnValue('backend');
+      vi.mocked(mockPromptBuilder.detectComponentFromConfig).mockReturnValue('backend');
       vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
         success: true,
         output: '',
