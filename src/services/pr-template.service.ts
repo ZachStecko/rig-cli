@@ -265,6 +265,8 @@ export class PrTemplateService {
         return '1. Test UI changes in the browser\n2. Verify responsive design on different screen sizes\n3. Test user interactions (clicks, forms, navigation)\n4. Check console for errors';
       case 'devnet':
         return '1. Deploy to local devnet\n2. Test smart contract interactions\n3. Verify transaction outcomes\n4. Check event emissions';
+      case 'node':
+        return '1. Run `npm test` to verify all tests pass\n2. Run `npm run lint` to check for lint errors\n3. Run `npm run build` to verify compilation\n4. Test CLI commands or library exports manually';
       case 'fullstack':
       default:
         return '1. Test end-to-end user flows\n2. Verify frontend-backend integration\n3. Test error handling across the stack\n4. Check data consistency';
@@ -288,6 +290,9 @@ export class PrTemplateService {
 
       case 'devnet':
         return '```bash\ncd devnet && npx vitest run\n```';
+
+      case 'node':
+        return '```bash\nnpm test\nnpm run lint\nnpm run build\n```';
 
       case 'fullstack':
       default:

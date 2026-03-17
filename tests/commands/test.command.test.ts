@@ -185,9 +185,37 @@ describe('TestCommand', () => {
       await command.execute({ component: 'invalid' });
 
       expect(mockLogger.error).toHaveBeenCalledWith(
-        'Invalid component: invalid. Must be one of: backend, frontend, devnet, fullstack'
+        'Invalid component: invalid. Must be one of: backend, frontend, devnet, fullstack, node'
       );
       expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('tests node component', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(true);
+      vi.mocked(mockState.read).mockResolvedValue({
+        issue_number: 42,
+        issue_title: 'Add CLI feature',
+        branch: 'issue-42-add-cli-feature',
+        stage: 'test' as const,
+        stages: {
+          pick: 'completed' as const,
+          branch: 'completed' as const,
+          implement: 'completed' as const,
+          test: 'pending' as const,
+          pr: 'pending' as const,
+          review: 'pending' as const,
+        },
+      });
+      vi.mocked(mockTestRunner.runAllTests).mockResolvedValue({
+        success: true,
+        output: '',
+      });
+      vi.mocked(mockTestRunner.listNewTestFiles).mockResolvedValue([]);
+
+      await command.execute({ component: 'node' });
+
+      expect(mockTestRunner.runAllTests).toHaveBeenCalledWith('node');
+      expect(mockLogger.info).toHaveBeenCalledWith('Component: node');
     });
 
     it('displays header with issue info', async () => {

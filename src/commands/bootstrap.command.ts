@@ -21,8 +21,8 @@ const execAsync = promisify(exec);
  * Options for the bootstrap command.
  */
 export interface BootstrapOptions {
-  /** Target component to bootstrap (frontend, backend, infra, serverless, all) */
-  component?: 'frontend' | 'backend' | 'infra' | 'serverless' | 'all';
+  /** Target component to bootstrap (frontend, backend, infra, serverless, node, all) */
+  component?: 'frontend' | 'backend' | 'infra' | 'serverless' | 'node' | 'all';
 }
 
 /**
@@ -66,6 +66,7 @@ export class BootstrapCommand extends BaseCommand {
     let backendPath: string | null = null;
     let infraPath: string | null = null;
     let serverlessPath: string | null = null;
+    let nodePath: string | null = null;
     let backendType: 'go' | 'typescript' | undefined = undefined;
 
     // Calculate total steps dynamically
@@ -73,7 +74,8 @@ export class BootstrapCommand extends BaseCommand {
       (component === 'frontend' || component === 'all' ? 1 : 0) +
       (component === 'backend' || component === 'all' ? 1 : 0) +
       (component === 'infra' || component === 'all' ? 1 : 0) +
-      (component === 'serverless' || component === 'all' ? 1 : 0);
+      (component === 'serverless' || component === 'all' ? 1 : 0) +
+      (component === 'node' ? 1 : 0);
 
     let currentStep = 0;
 
@@ -105,9 +107,16 @@ export class BootstrapCommand extends BaseCommand {
       }
     }
 
+    if (component === 'node') {
+      nodePath = await this.promptForPath('node');
+      if (nodePath) {
+        await this.bootstrapNode(nodePath, ++currentStep, totalSteps);
+      }
+    }
+
     // Save paths to config if provided
-    if (frontendPath || backendPath || infraPath || serverlessPath) {
-      await this.saveComponentPaths(frontendPath, backendPath, infraPath, serverlessPath, backendType);
+    if (frontendPath || backendPath || infraPath || serverlessPath || nodePath) {
+      await this.saveComponentPaths(frontendPath, backendPath, infraPath, serverlessPath, backendType, nodePath);
     }
 
     console.log('');
@@ -511,6 +520,140 @@ describe('Database Tests', () => {
   }
 
   /**
+   * Bootstraps Node.js project test infrastructure.
+   *
+   * Detects existing dependencies, installs vitest if needed,
+   * creates vitest.config.ts and tests/ directory.
+   *
+   * @param nodePath - Path to node project directory
+   * @param step - Current step number
+   * @param totalSteps - Total number of steps
+   */
+  private async bootstrapNode(nodePath: string, step: number, totalSteps: number): Promise<void> {
+    this.logger.step(step, totalSteps, 'Setting up Node.js test infrastructure...');
+    console.log('');
+
+    // Read package.json to detect existing deps
+    const packageJsonPath = path.join(nodePath, 'package.json');
+    let packageJson: any = {};
+    if (fs.existsSync(packageJsonPath)) {
+      try {
+        const content = await readFile(packageJsonPath, 'utf-8');
+        packageJson = JSON.parse(content);
+      } catch {
+        this.logger.warn('Could not read package.json');
+      }
+    }
+
+    // Install vitest if not already present
+    const devDeps = packageJson.devDependencies || {};
+    if (!devDeps.vitest) {
+      this.logger.info('Installing vitest...');
+      try {
+        await execAsync('npm install --save-dev vitest @vitest/coverage-v8', { cwd: nodePath });
+        this.logger.success('Vitest installed');
+      } catch (error) {
+        this.logger.warn('Failed to install vitest (may already be installed)');
+      }
+    } else {
+      this.logger.dim('vitest already installed, skipping');
+    }
+
+    // Create vitest.config.ts if missing
+    const vitestConfigPath = path.join(nodePath, 'vitest.config.ts');
+    if (!fs.existsSync(vitestConfigPath)) {
+      this.logger.info('Creating vitest.config.ts...');
+      await writeFile(vitestConfigPath, this.generateNodeVitestConfig());
+      this.logger.success('Created vitest.config.ts');
+    } else {
+      this.logger.dim('vitest.config.ts already exists, skipping');
+    }
+
+    // Create tests/ directory if missing
+    const testsDir = path.join(nodePath, 'tests');
+    if (!fs.existsSync(testsDir)) {
+      this.logger.info('Creating tests/ directory...');
+      await mkdir(testsDir, { recursive: true });
+      this.logger.success('Created tests/ directory');
+    } else {
+      this.logger.dim('tests/ directory already exists, skipping');
+    }
+
+    // Verify package.json scripts
+    this.logger.info('Checking package.json scripts...');
+    const scripts = packageJson.scripts || {};
+    if (scripts.test) {
+      this.logger.dim(`test script found: ${scripts.test}`);
+    } else {
+      this.logger.warn('No test script found in package.json');
+    }
+    if (scripts['test:coverage']) {
+      this.logger.dim(`test:coverage script found: ${scripts['test:coverage']}`);
+    }
+
+    console.log('');
+  }
+
+  /**
+   * Detects Node.js project commands from package.json scripts.
+   *
+   * @param nodePath - Path to node project directory
+   * @returns Object with detected test_command, lint_command, build_command
+   */
+  private detectNodeCommands(nodePath: string): { test_command: string; lint_command?: string; build_command?: string } {
+    const packageJsonPath = path.join(nodePath, 'package.json');
+    const result: { test_command: string; lint_command?: string; build_command?: string } = {
+      test_command: 'npm test',
+    };
+
+    if (!fs.existsSync(packageJsonPath)) {
+      return result;
+    }
+
+    try {
+      const content = fs.readFileSync(packageJsonPath, 'utf-8');
+      const packageJson = JSON.parse(content);
+      const scripts = packageJson.scripts || {};
+
+      if (scripts.test) {
+        result.test_command = 'npm test';
+      }
+      if (scripts.lint) {
+        result.lint_command = 'npm run lint';
+      }
+      if (scripts.build) {
+        result.build_command = 'npm run build';
+      }
+    } catch {
+      // Use defaults
+    }
+
+    return result;
+  }
+
+  /**
+   * Generates vitest.config.ts content for Node.js projects.
+   */
+  private generateNodeVitestConfig(): string {
+    return `import { defineConfig } from 'vitest/config'
+
+export default defineConfig({
+  test: {
+    environment: 'node',
+    globals: true,
+    include: ['tests/**/*.test.{ts,js}', 'src/**/*.test.{ts,js}'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/**/*.{ts,js}'],
+      exclude: ['src/**/*.test.{ts,js}'],
+    },
+  },
+})
+`;
+  }
+
+  /**
    * Generates vitest.config.ts content.
    */
   private generateVitestConfig(): string {
@@ -656,13 +799,13 @@ export const handlers = [
    *
    * @returns The selected component type
    */
-  private async promptForComponent(): Promise<'frontend' | 'backend' | 'infra' | 'serverless' | 'all'> {
+  private async promptForComponent(): Promise<'frontend' | 'backend' | 'infra' | 'serverless' | 'node' | 'all'> {
     const answer = await this.prompt(
-      'Which component(s) do you want to bootstrap? (frontend/backend/infra/serverless/all) [all]: '
+      'Which component(s) do you want to bootstrap? (frontend/backend/infra/serverless/node/all) [all]: '
     );
     const normalized = answer.trim().toLowerCase();
 
-    if (normalized === 'frontend' || normalized === 'backend' || normalized === 'infra' || normalized === 'serverless' || normalized === 'all') {
+    if (normalized === 'frontend' || normalized === 'backend' || normalized === 'infra' || normalized === 'serverless' || normalized === 'node' || normalized === 'all') {
       return normalized;
     }
 
@@ -681,13 +824,21 @@ export const handlers = [
     if (componentType === 'frontend') defaultPath = './frontend';
     if (componentType === 'infra') defaultPath = './infra';
     if (componentType === 'serverless') defaultPath = './serverless';
+    if (componentType === 'node') defaultPath = '.';
 
     const answer = await this.prompt(
       `Path to ${componentType} directory [${defaultPath}, or 'skip' to skip]: `
     );
     const normalized = answer.trim().toLowerCase();
 
-    if (normalized === 'skip' || normalized === 's' || normalized === '') {
+    if (normalized === 'skip' || normalized === 's') {
+      this.logger.info(`Skipping ${componentType} setup`);
+      return null;
+    }
+
+    // For node component, empty input accepts the default (current dir)
+    // For other components, empty input skips
+    if (normalized === '' && componentType !== 'node') {
       this.logger.info(`Skipping ${componentType} setup`);
       return null;
     }
@@ -730,7 +881,8 @@ export const handlers = [
     backendPath: string | null,
     infraPath: string | null,
     serverlessPath: string | null,
-    backendType?: 'go' | 'typescript'
+    backendType?: 'go' | 'typescript',
+    nodePath?: string | null
   ): Promise<void> {
     try {
       const config = this.config.get();
@@ -765,6 +917,16 @@ export const handlers = [
         config.components.serverless = {
           path: serverlessPath,
           test_command: 'npm test',
+        };
+      }
+
+      if (nodePath) {
+        const detected = this.detectNodeCommands(nodePath);
+        config.components.node = {
+          path: nodePath,
+          test_command: detected.test_command,
+          lint_command: detected.lint_command,
+          build_command: detected.build_command,
         };
       }
 

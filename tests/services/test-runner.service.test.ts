@@ -700,6 +700,196 @@ describe('TestRunnerService', () => {
     });
   });
 
+  describe('runNodeLint', () => {
+    let nodeTestRunner: TestRunnerService;
+
+    beforeEach(() => {
+      const nodeConfig = {
+        get: vi.fn().mockReturnValue({
+          components: {
+            node: {
+              path: '.',
+              test_command: 'npm test',
+              lint_command: 'npm run lint',
+              build_command: 'npm run build',
+            },
+          },
+        }),
+      };
+      nodeTestRunner = new TestRunnerService(projectRoot, mockGit, nodeConfig, mockLogger);
+    });
+
+    it('skips when node not configured', async () => {
+      const emptyConfig = { get: vi.fn().mockReturnValue({ components: {} }) };
+      const runner = new TestRunnerService(projectRoot, mockGit, emptyConfig, mockLogger);
+
+      const result = await runner.runNodeLint();
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+    });
+
+    it('skips when node directory does not exist', async () => {
+      mockExistsSync.mockReturnValue(false);
+
+      const result = await nodeTestRunner.runNodeLint();
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+    });
+
+    it('runs lint command successfully', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockExec.mockResolvedValueOnce({
+        stdout: 'All files passed',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await nodeTestRunner.runNodeLint();
+
+      expect(result.success).toBe(true);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('npm run lint'),
+      );
+    });
+  });
+
+  describe('runNodeBuild', () => {
+    let nodeTestRunner: TestRunnerService;
+
+    beforeEach(() => {
+      const nodeConfig = {
+        get: vi.fn().mockReturnValue({
+          components: {
+            node: {
+              path: '.',
+              test_command: 'npm test',
+              build_command: 'npm run build',
+            },
+          },
+        }),
+      };
+      nodeTestRunner = new TestRunnerService(projectRoot, mockGit, nodeConfig, mockLogger);
+    });
+
+    it('skips when node not configured', async () => {
+      const emptyConfig = { get: vi.fn().mockReturnValue({ components: {} }) };
+      const runner = new TestRunnerService(projectRoot, mockGit, emptyConfig, mockLogger);
+
+      const result = await runner.runNodeBuild();
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+    });
+
+    it('runs build command successfully', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockExec.mockResolvedValueOnce({
+        stdout: 'Build complete',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await nodeTestRunner.runNodeBuild();
+
+      expect(result.success).toBe(true);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('npm run build'),
+      );
+    });
+
+    it('returns failure when build fails', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'TS2304: Cannot find name "Foo"',
+        exitCode: 1,
+      });
+
+      const result = await nodeTestRunner.runNodeBuild();
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('Cannot find name "Foo"');
+    });
+  });
+
+  describe('runNodeTests', () => {
+    let nodeTestRunner: TestRunnerService;
+
+    beforeEach(() => {
+      const nodeConfig = {
+        get: vi.fn().mockReturnValue({
+          components: {
+            node: {
+              path: '.',
+              test_command: 'npm test',
+            },
+          },
+        }),
+      };
+      nodeTestRunner = new TestRunnerService(projectRoot, mockGit, nodeConfig, mockLogger);
+    });
+
+    it('skips when node not configured', async () => {
+      const emptyConfig = { get: vi.fn().mockReturnValue({ components: {} }) };
+      const runner = new TestRunnerService(projectRoot, mockGit, emptyConfig, mockLogger);
+
+      const result = await runner.runNodeTests();
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+    });
+
+    it('skips when package.json does not exist', async () => {
+      mockExistsSync.mockReturnValueOnce(true); // node dir exists
+      mockExistsSync.mockReturnValueOnce(false); // package.json doesn't
+
+      const result = await nodeTestRunner.runNodeTests();
+
+      expect(result.success).toBe(true);
+      expect(result.skipped).toBe(true);
+      expect(result.output).toContain('No package.json');
+    });
+
+    it('runs npm test successfully', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({ scripts: { test: 'vitest run' } })
+      );
+      mockExec.mockResolvedValueOnce({
+        stdout: '✓ 15 tests passed',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await nodeTestRunner.runNodeTests();
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('15 tests passed');
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('npm test'),
+      );
+    });
+
+    it('returns failure when tests fail', async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFile.mockResolvedValue(
+        JSON.stringify({ scripts: { test: 'vitest run' } })
+      );
+      mockExec.mockResolvedValueOnce({
+        stdout: '✗ 3 tests failed',
+        stderr: '',
+        exitCode: 1,
+      });
+
+      const result = await nodeTestRunner.runNodeTests();
+
+      expect(result.success).toBe(false);
+      expect(result.output).toContain('3 tests failed');
+    });
+  });
+
   describe('runAllTests', () => {
     beforeEach(() => {
       mockExistsSync.mockReturnValue(true);
@@ -756,6 +946,35 @@ describe('TestRunnerService', () => {
       // Should run both backend and frontend tests
       expect(mockExec).toHaveBeenCalledWith(
         expect.stringContaining('go test')
+      );
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('npm test')
+      );
+    });
+
+    it('runs node lint, build, and tests for node component', async () => {
+      const nodeConfig = {
+        get: vi.fn().mockReturnValue({
+          components: {
+            node: {
+              path: '.',
+              test_command: 'npm test',
+              lint_command: 'npm run lint',
+              build_command: 'npm run build',
+            },
+          },
+        }),
+      };
+      const nodeTestRunner = new TestRunnerService(projectRoot, mockGit, nodeConfig, mockLogger);
+
+      const result = await nodeTestRunner.runAllTests('node');
+
+      expect(result.success).toBe(true);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('npm run lint')
+      );
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('npm run build')
       );
       expect(mockExec).toHaveBeenCalledWith(
         expect.stringContaining('npm test')

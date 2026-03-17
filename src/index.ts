@@ -68,7 +68,7 @@ program
   .command('queue')
   .description('Display prioritized issue backlog')
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
-  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
+  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet, node)')
   .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
@@ -81,7 +81,7 @@ program
   .command('next')
   .description('Pick the next issue from the queue and initialize pipeline')
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
-  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
+  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet, node)')
   .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
@@ -130,7 +130,7 @@ program
   .command('test')
   .description('Run tests for the current implementation')
   .option('--issue <number>', 'Test a specific issue number (bypasses state)')
-  .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack)')
+  .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack, node)')
   .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
@@ -172,7 +172,7 @@ program
   .description('Run full issue-to-PR pipeline (pick → implement → test → pr → review)')
   .option('--issue <number>', 'Start with a specific issue number')
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
-  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
+  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet, node)')
   .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
@@ -198,7 +198,7 @@ program
 program
   .command('bootstrap')
   .description('Set up test infrastructure (vitest, testing-library, msw)')
-  .option('--component <name>', 'Component to bootstrap (frontend, backend, infra, serverless, all)')
+  .option('--component <name>', 'Component to bootstrap (frontend, backend, infra, serverless, node, all)')
   .action(async (options) => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);

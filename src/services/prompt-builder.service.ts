@@ -59,10 +59,16 @@ export class PromptBuilderService {
     const hasFrontend = lowercaseLabels.includes('frontend');
     const hasDevnet = lowercaseLabels.includes('devnet');
     const hasFullstack = lowercaseLabels.includes('fullstack');
+    const hasNode = lowercaseLabels.includes('node');
 
     // If explicitly labeled fullstack, return it
     if (hasFullstack) {
       return 'fullstack';
+    }
+
+    // If explicitly labeled node, return it
+    if (hasNode) {
+      return 'node';
     }
 
     // If multiple components, it's fullstack

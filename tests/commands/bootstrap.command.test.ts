@@ -503,4 +503,120 @@ describe('BootstrapCommand', () => {
       expect(mockLogger.info).toHaveBeenCalledWith('Skipping serverless setup');
     });
   });
+
+  describe('node setup', () => {
+    beforeEach(async () => {
+      // Node component uses the project root itself
+      await writeFile(
+        path.join(testProjectRoot, 'package.json'),
+        JSON.stringify({
+          name: 'test-node-project',
+          scripts: {
+            test: 'vitest run',
+            lint: 'eslint src/',
+            build: 'tsc',
+          },
+          devDependencies: {},
+        }, null, 2)
+      );
+
+      // Override prompt to handle node paths
+      (command as any).prompt = vi.fn().mockImplementation((question: any) => {
+        const q = String(question);
+        if (q.includes('component')) {
+          return Promise.resolve('node');
+        }
+        if (q.includes('node')) {
+          return Promise.resolve(testProjectRoot);
+        }
+        return Promise.resolve('');
+      });
+    });
+
+    it('bootstraps node component with step counter', async () => {
+      await command.execute({ component: 'node' });
+
+      expect(mockLogger.step).toHaveBeenCalledWith(1, 1, 'Setting up Node.js test infrastructure...');
+    });
+
+    it('installs vitest when not already present', async () => {
+      await command.execute({ component: 'node' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Installing vitest...');
+    });
+
+    it('skips vitest install when already in devDependencies', async () => {
+      await writeFile(
+        path.join(testProjectRoot, 'package.json'),
+        JSON.stringify({
+          name: 'test-node-project',
+          scripts: { test: 'vitest run' },
+          devDependencies: { vitest: '^1.0.0' },
+        }, null, 2)
+      );
+
+      await command.execute({ component: 'node' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('vitest already installed, skipping');
+    });
+
+    it('creates vitest.config.ts when missing', async () => {
+      await command.execute({ component: 'node' });
+
+      const vitestConfigPath = path.join(testProjectRoot, 'vitest.config.ts');
+      expect(fs.existsSync(vitestConfigPath)).toBe(true);
+
+      const content = await readFile(vitestConfigPath, 'utf-8');
+      expect(content).toContain('defineConfig');
+      expect(content).toContain("environment: 'node'");
+      expect(content).not.toContain('jsdom');
+    });
+
+    it('skips vitest.config.ts when it already exists', async () => {
+      const vitestConfigPath = path.join(testProjectRoot, 'vitest.config.ts');
+      await writeFile(vitestConfigPath, 'existing config');
+
+      await command.execute({ component: 'node' });
+
+      const content = await readFile(vitestConfigPath, 'utf-8');
+      expect(content).toBe('existing config');
+      expect(mockLogger.dim).toHaveBeenCalledWith('vitest.config.ts already exists, skipping');
+    });
+
+    it('creates tests/ directory when missing', async () => {
+      await command.execute({ component: 'node' });
+
+      const testsDir = path.join(testProjectRoot, 'tests');
+      expect(fs.existsSync(testsDir)).toBe(true);
+    });
+
+    it('skips tests/ directory when it already exists', async () => {
+      await mkdir(path.join(testProjectRoot, 'tests'), { recursive: true });
+
+      await command.execute({ component: 'node' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('tests/ directory already exists, skipping');
+    });
+
+    it('detects package.json scripts and saves to .rig.yml', async () => {
+      await command.execute({ component: 'node' });
+
+      const configPath = path.join(testProjectRoot, '.rig.yml');
+      expect(fs.existsSync(configPath)).toBe(true);
+
+      const content = await readFile(configPath, 'utf-8');
+      expect(content).toContain('node');
+      expect(content).toContain('test_command');
+      expect(content).toContain('lint_command');
+      expect(content).toContain('build_command');
+    });
+
+    it('skips node setup if user enters skip', async () => {
+      (command as any).prompt = vi.fn().mockResolvedValue('skip');
+
+      await command.execute({ component: 'node' });
+
+      expect(mockLogger.info).toHaveBeenCalledWith('Skipping node setup');
+    });
+  });
 });
