@@ -1,0 +1,20 @@
+agent:
+  provider: binary
+  max_turns: 80
+  permission_mode: bypassPermissions
+  timeout: 120
+queue:
+  default_phase: null
+  default_component: null
+test:
+  require_new_tests: true
+pr:
+  draft: false
+  reviewers: []
+verbose: true
+components:
+  node:
+    path: /Users/zachstecko/projects/rig-cli
+    test_command: npm test
+    lint_command: npm run lint
+    build_command: npm run build
