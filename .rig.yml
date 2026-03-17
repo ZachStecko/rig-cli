@@ -2,7 +2,7 @@ agent:
   provider: binary
   max_turns: 80
   permission_mode: bypassPermissions
-  timeout: 120
+  timeout: 500
 queue:
   default_phase: null
   default_component: null
