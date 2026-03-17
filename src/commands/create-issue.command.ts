@@ -112,11 +112,18 @@ export class CreateIssueCommand extends BaseCommand {
 
     // Create the issue
     try {
+      // Merge LLM-suggested labels with default labels from config
+      const llmLabels = structured.labels || [];
+      const allLabels = [...new Set([...defaultLabels, ...llmLabels])];
+      if (allLabels.length > 0) {
+        this.logger.info(`Labels: ${allLabels.join(', ')}`);
+      }
+
       this.logger.command('gh issue create');
       const issueNumber = await this.github.createIssue({
         title: structured.title,
         body: structured.body,
-        labels: defaultLabels.length > 0 ? defaultLabels : undefined,
+        labels: allLabels.length > 0 ? allLabels : undefined,
       });
 
       console.log('');
