@@ -71,23 +71,19 @@ Respond with ONLY a valid JSON object with "title" and "body" fields. No markdow
     // before the actual JSON object when acting as an agent.
     let structured: StructuredIssue;
     try {
-      // Strip markdown code fences if present
-      const cleaned = responseText
-        .replace(/```(?:json)?\s*\n?/g, '')
-        .replace(/\n?```/g, '')
-        .trim();
-
-      // Try parsing the whole thing first (fast path)
+      // Try parsing the whole response first (fast path)
       try {
-        structured = JSON.parse(cleaned) as StructuredIssue;
+        structured = JSON.parse(responseText.trim()) as StructuredIssue;
       } catch {
+        // Response may have markdown code fences or preamble text
         // Find the first { ... } JSON object in the response
-        const jsonStart = cleaned.indexOf('{');
-        const jsonEnd = cleaned.lastIndexOf('}');
+        const jsonStart = responseText.indexOf('{');
+        const jsonEnd = responseText.lastIndexOf('}');
         if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
           throw new Error('No JSON object found in response');
         }
-        structured = JSON.parse(cleaned.substring(jsonStart, jsonEnd + 1)) as StructuredIssue;
+        const jsonText = responseText.substring(jsonStart, jsonEnd + 1);
+        structured = JSON.parse(jsonText) as StructuredIssue;
       }
     } catch (error) {
       throw new Error(
@@ -139,7 +135,12 @@ Technical specifics of WHAT to build. Be prescriptive. Specify:
 - Function/class names to add or change
 - Type signatures or interfaces needed
 - Key data structures or algorithms
-- Pseudocode or code snippets for complex algorithms, non-obvious logic, or tricky edge cases
+- Code snippets for complex algorithms, non-obvious logic, or tricky edge cases
+
+When including code examples, ALWAYS use proper markdown code fences with triple backticks and language identifier:
+\`\`\`typescript
+// example code here
+\`\`\`
 
 Be as specific as possible based on the raw description. When details are unclear:
 - State your assumptions explicitly (e.g., "Assuming JWT-based auth with refresh tokens")
@@ -189,6 +190,7 @@ ANTI-SLOP RULES — strictly follow these:
 - No emoji anywhere
 - No numbered lists with "Step 1:", "Step 2:" in prose sections (use bullets or narrative)
 - No sections beyond the eight listed above
+- ALWAYS use proper markdown code fences: \`\`\`language for opening and \`\`\` for closing — never output just "typescript" or "javascript" without the backticks
 - Target 400-800 words for medium-to-large features (fewer is fine for small changes)
 - Write like a senior engineer talking to another senior engineer
 - Be concrete and prescriptive — the AI agent needs zero ambiguity`;

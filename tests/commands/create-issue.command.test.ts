@@ -325,5 +325,64 @@ describe('CreateIssueCommand', () => {
 
       expect(mockLogger.error).toHaveBeenCalledWith(`Failed to create issue: ${mockError.message}`);
     });
+
+    it('creates issue with proper code fence formatting', async () => {
+      const mockDescription = 'Add authentication with code examples';
+      const mockStructured = {
+        title: 'feat: Add authentication',
+        body: `## Implementation Details
+
+Create an authentication service:
+
+\`\`\`typescript
+export class AuthService {
+  async login(username: string, password: string) {
+    return jwt.sign({ username }, SECRET);
+  }
+}
+\`\`\`
+
+## Testing Strategy
+- Test login flow with valid credentials`,
+      };
+      const mockIssueNumber = 42;
+      const mockRepoName = 'owner/repo';
+
+      const mockRL = {
+        on: vi.fn((event, callback) => {
+          if (event === 'line') {
+            callback(mockDescription);
+          }
+          if (event === 'close') {
+            callback();
+          }
+          return mockRL;
+        }),
+        close: vi.fn(),
+        question: vi.fn((question, answerCallback) => {
+          answerCallback('y');
+        }),
+      };
+      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+
+      mockLLMService.isAvailable.mockResolvedValue(true);
+      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
+      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
+      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
+
+      await command.execute();
+
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: mockStructured.title,
+        body: mockStructured.body,
+      });
+
+      const issueBody = vi.mocked(mockGitHub.createIssue).mock.calls[0][0].body;
+      expect(issueBody).toContain('```typescript');
+      expect(issueBody).toMatch(/```typescript[\s\S]*?```/);
+      expect(issueBody).not.toMatch(/^typescript$/m);
+    });
   });
 });
