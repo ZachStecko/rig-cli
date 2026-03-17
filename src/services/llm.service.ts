@@ -115,85 +115,79 @@ Respond with ONLY a valid JSON object with "title" and "body" fields. No markdow
    * @returns Formatted prompt
    */
   private buildIssuePrompt(rawDescription: string): string {
-    return `You are writing an implementation spec for the Claude Code AI agent. The output will be filed as a GitHub issue that Claude Code reads via \`gh issue view\` and implements via \`rig implement\` — so precision and specificity matter more than prose.
+    return `You are writing an implementation spec for Claude Code. Output a GitHub issue that \`rig implement\` will execute — precision over prose.
 
-Raw developer input:
+Raw input:
 ${rawDescription}
 
 TITLE:
-- Imperative mood, 50-80 characters
-- Add a component prefix if obvious (e.g. "cli: ...", "api: ...", "ui: ...")
+- Imperative, 50-80 chars
+- Add component prefix if clear (cli: / api: / ui: / etc.)
 
-BODY — use exactly these markdown H2 sections in the order shown. Omit a section only if it genuinely does not apply (e.g., skip Dependencies if none are needed):
+BODY — Use exactly these H2 sections in order. Skip a section entirely if it does not apply:
 
 ## Problem / Motivation
-Concrete symptom or gap in 2-4 sentences. No abstract desires.
+Concrete symptom or gap in 2-3 sentences.
 
 ## Implementation Details
-Technical specifics of WHAT to build. Be prescriptive. Specify:
-- Exact file paths to create or modify (e.g. "src/services/auth.service.ts")
-- Function/class names to add or change
-- Type signatures or interfaces needed
-- Key data structures or algorithms
-- Code snippets for complex algorithms, non-obvious logic, or tricky edge cases
+WHAT to build. Be prescriptive:
+- File paths to create/modify (e.g., "src/services/auth.service.ts")
+- Function/class names
+- Type signatures
+- Algorithms or data structures
+- Code snippets ONLY for complex/tricky logic
 
-When including code examples, ALWAYS use proper markdown code fences with triple backticks and language identifier:
+Code examples:
 \`\`\`typescript
-// example code here
+// example code
 \`\`\`
 
-Be as specific as possible based on the raw description. When details are unclear:
-- State your assumptions explicitly (e.g., "Assuming JWT-based auth with refresh tokens")
-- If critical information is missing, add a "## Questions for Developer" section at the end
-- Avoid vague placeholders like "TBD" or "details to be determined"
+When unclear, state assumptions (e.g., "Assuming JWT auth"). If critical info is missing, add "## Questions for Developer" at end.
 
 ## Approach
-High-level WHY and HOW. Architecture and design decisions:
-- Overall design pattern (MVC, repository pattern, event-driven, etc.)
-- Which architectural layers handle which responsibilities
-- What patterns to follow (e.g., "use existing PromptBuilder pattern from prompt-builder.service.ts")
-- Integration points with existing systems
-- Key constraints or trade-offs
-- Why this approach was chosen over alternatives (if relevant)
+WHY and HOW. Architecture:
+- Design pattern (MVC, repository, etc.)
+- Layer responsibilities
+- Patterns to follow
+- Integration points
+- Constraints/trade-offs
 
 ## Testing Strategy
-Specific testing requirements. For code changes:
-- Test file paths (e.g., "tests/services/auth.service.test.ts") if new tests are needed
-- Key test cases to cover (3-6 specific scenarios)
-- Testing approach (unit, integration, e2e)
-- What success looks like for tests
+For code:
+- Test file paths if creating new tests
+- 3-6 key test cases
+- Testing approach (unit/integration/e2e)
 
-For config/documentation changes, describe verification steps instead of unit tests (e.g., "Verify markdown renders correctly on GitHub" or "Run linter to confirm config is valid").
+For config/docs, describe verification steps.
 
 ## Acceptance Criteria
-3-8 bulleted, testable statements:
-- Concrete behaviors (e.g., "\`GET /api/foo\` returns 200 with the new field")
-- Observable outcomes, not implementation details
-- Binary pass/fail conditions
+3-8 bulleted, testable outcomes:
+- Concrete behaviors (e.g., "\`GET /api/foo\` returns 200")
+- Observable, binary pass/fail
 
 ## Dependencies
-**Skip this section entirely** if no dependencies are needed. Include only if applicable:
-- New npm packages or imports needed (with version constraints if known, e.g., "jsonwebtoken@^9.0.0")
-- Configuration files that must be modified (e.g., tsconfig.json, .env)
-- Database migrations or schema changes
-- Breaking changes or deprecations that affect other code
+Skip if none. Otherwise:
+- npm packages (with versions, e.g., "jsonwebtoken@^9.0.0")
+- Config changes (tsconfig.json, .env)
+- DB migrations
+- Breaking changes
 
 ## Notes
-Edge cases, performance considerations, security implications. Omit this section entirely if there is nothing to say.
+Edge cases, performance, security. Omit if nothing to say.
 
 ## Questions for Developer
-**Only include this section if critical details are missing** from the raw input. List specific questions that need answers before implementation can begin. If everything is clear, omit this section entirely.
+Only if critical details are missing. Omit otherwise.
 
-ANTI-SLOP RULES — strictly follow these:
-- No "This issue aims to...", "This PR will...", or similar filler openers
-- No inline bold markup (**text**) anywhere in the body
-- No emoji anywhere
-- No numbered lists with "Step 1:", "Step 2:" in prose sections (use bullets or narrative)
-- No sections beyond the eight listed above
-- ALWAYS use proper markdown code fences: \`\`\`language for opening and \`\`\` for closing — never output just "typescript" or "javascript" without the backticks
-- Target 400-800 words for medium-to-large features (fewer is fine for small changes)
-- Write like a senior engineer talking to another senior engineer
-- Be concrete and prescriptive — the AI agent needs zero ambiguity`;
+ANTI-SLOP RULES:
+- No "This issue aims to", "This PR will", or filler openers
+- No bold (**text**)
+- No emoji
+- No "Step 1:", "Step 2:" prose
+- No sections beyond the eight above
+- ALWAYS use \`\`\`language code fences — never just "typescript" without backticks
+- Target 300-600 words (fewer for small changes)
+- Senior engineer to senior engineer tone
+- Zero ambiguity`;
   }
 
 }
