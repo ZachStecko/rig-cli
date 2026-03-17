@@ -388,6 +388,39 @@ components:
 
 Component detection uses issue labels (`frontend`, `backend`, etc.).
 
+## Default Labels Configuration
+
+### `defaultLabels`
+
+**Type:** `array<string>`
+**Default:** `[]`
+
+Default labels to automatically apply when creating issues via `rig create-issue`.
+
+```yaml
+defaultLabels:
+  - rig-generated
+  - needs-triage
+```
+
+**Use cases:**
+- Automatically tag AI-generated issues for team awareness
+- Apply triage or workflow labels by default
+- Categorize issues for better organization
+
+**Example:**
+```yaml
+defaultLabels:
+  - enhancement
+  - rig-created
+  - needs-review
+```
+
+**Notes:**
+- Labels must already exist in your GitHub repository
+- Invalid label names will cause issue creation to fail
+- Empty array or omitted field means no labels are applied
+
 ## Verbose Mode
 
 ### `verbose`
@@ -537,6 +570,11 @@ components:
     path: ./backend
     test_command: go test ./... -v
     lint_command: golangci-lint run
+
+# Default labels for created issues
+defaultLabels:
+  - rig-generated
+  - needs-review
 
 verbose: false
 ```

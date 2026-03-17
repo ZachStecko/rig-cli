@@ -87,6 +87,8 @@ export interface RigConfig {
   /** Enable verbose debug output (default: false) */
   verbose?: boolean;
   components?: ComponentsConfig;
+  /** Default labels to apply when creating issues via rig create-issue (default: []) */
+  defaultLabels?: string[];
 }
 
 /**

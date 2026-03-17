@@ -49,6 +49,10 @@ export class CreateIssueCommand extends BaseCommand {
 
     this.logger.config('Agent provider', rigConfig.agent.provider || 'binary');
     this.logger.config('Verbose', verbose);
+    const defaultLabels = rigConfig.defaultLabels || [];
+    if (defaultLabels.length > 0) {
+      this.logger.config('Default labels', defaultLabels.join(', '));
+    }
 
     // Get raw description from user
     this.logger.info('Describe the issue in your own words (multiline input):');
@@ -99,9 +103,11 @@ export class CreateIssueCommand extends BaseCommand {
     // Create the issue
     try {
       this.logger.command('gh issue create');
+      const labels = rigConfig.defaultLabels || [];
       const issueNumber = await this.github.createIssue({
         title: structured.title,
         body: structured.body,
+        labels: labels.length > 0 ? labels : undefined,
       });
 
       console.log('');
