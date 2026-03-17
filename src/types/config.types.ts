@@ -1,3 +1,5 @@
+import { ValidLabel } from './labels.types.js';
+
 /**
  * Configuration for Claude agent behavior.
  */
@@ -88,7 +90,7 @@ export interface RigConfig {
   verbose?: boolean;
   components?: ComponentsConfig;
   /** Default labels to apply when creating issues via rig create-issue (default: []) */
-  defaultLabels?: string[];
+  defaultLabels?: ValidLabel[];
 }
 
 /**
