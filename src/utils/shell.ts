@@ -29,7 +29,7 @@ export interface ShellResult {
  */
 export async function exec(command: string, options: { cwd?: string; timeout?: number } = {}): Promise<ShellResult> {
   return new Promise((resolve) => {
-    cpExec(command, { cwd: options.cwd, timeout: options.timeout }, (error, stdout, stderr) => {
+    cpExec(command, { cwd: options.cwd, timeout: options.timeout, maxBuffer: 50 * 1024 * 1024 }, (error, stdout, stderr) => {
       resolve({
         stdout: stdout?.toString() ?? '',
         stderr: stderr?.toString() ?? '',

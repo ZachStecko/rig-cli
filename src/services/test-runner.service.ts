@@ -13,6 +13,18 @@ export interface TestResult {
   success: boolean;
   output: string;
   skipped?: boolean;
+  /** Label identifying which step produced this result (e.g., "Frontend lint") */
+  step?: string;
+}
+
+/**
+ * Aggregated result from runAllTests, including per-step breakdown.
+ */
+export interface AggregateTestResult extends TestResult {
+  /** All individual step results */
+  steps: TestResult[];
+  /** Only the steps that failed (non-skipped) */
+  failedSteps: TestResult[];
 }
 
 /**
@@ -519,7 +531,7 @@ export class TestRunnerService {
    * @param component - Component type to test
    * @returns Test result with success status and combined output
    */
-  async runAllTests(component: 'backend' | 'frontend' | 'devnet' | 'fullstack'): Promise<TestResult> {
+  async runAllTests(component: 'backend' | 'frontend' | 'devnet' | 'fullstack'): Promise<AggregateTestResult> {
     const results: TestResult[] = [];
 
     // Ensure Docker is running if testing backend (may need testcontainers)
@@ -532,29 +544,30 @@ export class TestRunnerService {
     }
 
     if (component === 'devnet') {
-      results.push(await this.runDevnetTests());
-      results.push(await this.checkTestCoverage(component));
+      results.push({ ...await this.runDevnetTests(), step: 'Devnet tests' });
+      results.push({ ...await this.checkTestCoverage(component), step: 'Test coverage' });
     } else {
       if (component === 'backend' || component === 'fullstack') {
-        results.push(await this.runBackendLint());
-        results.push(await this.runBackendBuild());
-        results.push(await this.runBackendTests());
+        results.push({ ...await this.runBackendLint(), step: 'Backend lint' });
+        results.push({ ...await this.runBackendBuild(), step: 'Backend build' });
+        results.push({ ...await this.runBackendTests(), step: 'Backend tests' });
       }
 
       if (component === 'frontend' || component === 'fullstack') {
-        results.push(await this.runFrontendLint());
-        results.push(await this.runFrontendBuild());
-        results.push(await this.runFrontendTests());
+        results.push({ ...await this.runFrontendLint(), step: 'Frontend lint' });
+        results.push({ ...await this.runFrontendBuild(), step: 'Frontend build' });
+        results.push({ ...await this.runFrontendTests(), step: 'Frontend tests' });
       }
 
-      results.push(await this.checkTestCoverage(component));
+      results.push({ ...await this.checkTestCoverage(component), step: 'Test coverage' });
     }
 
     // Aggregate results
     const success = results.every(r => r.success);
     const output = results.map(r => r.output).filter(o => o.length > 0).join('\n\n');
+    const failedSteps = results.filter(r => !r.success && !r.skipped);
 
-    return { success, output };
+    return { success, output, steps: results, failedSteps };
   }
 
   /**

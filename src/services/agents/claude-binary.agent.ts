@@ -43,11 +43,13 @@ export class ClaudeBinaryAgent extends CodeAgent {
   private claudeService: ClaudeService;
   private sessionCounter = 0;
   private verbose: boolean;
+  private timeoutMs: number;
 
-  constructor(verbose?: boolean) {
+  constructor(verbose?: boolean, timeoutMs?: number) {
     super();
     this.claudeService = new ClaudeService();
     this.verbose = verbose ?? false;
+    this.timeoutMs = timeoutMs ?? 120_000;
   }
 
   /**
@@ -83,7 +85,7 @@ export class ClaudeBinaryAgent extends CodeAgent {
    * Simple prompt/response using Claude Code CLI.
    */
   async prompt(prompt: string): Promise<string> {
-    return this.claudeService.prompt(prompt, { verbose: this.verbose });
+    return this.claudeService.prompt(prompt, { verbose: this.verbose, timeoutMs: this.timeoutMs });
   }
 
   /**

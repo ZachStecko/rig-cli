@@ -8,6 +8,8 @@ export interface AgentConfig {
   max_turns: number;
   /** Permission mode for file operations: 'default' requires approval, 'bypassPermissions' auto-approves all, 'acceptEdits' accepts edits, 'dontAsk' skips prompts, 'plan' for plan mode, 'auto' for automatic (default: 'bypassPermissions') */
   permission_mode?: 'default' | 'bypassPermissions' | 'acceptEdits' | 'dontAsk' | 'plan' | 'auto';
+  /** Timeout in seconds for Claude prompt calls (default: 120) */
+  timeout?: number;
 }
 
 /**
@@ -91,7 +93,7 @@ export interface RigConfig {
  * These are used when .rig.yml is missing or fields are omitted.
  */
 export const DEFAULT_CONFIG: RigConfig = {
-  agent: { provider: 'binary', max_turns: 80, permission_mode: 'bypassPermissions' },
+  agent: { provider: 'binary', max_turns: 80, permission_mode: 'bypassPermissions', timeout: 120 },
   queue: { default_phase: null, default_component: null },
   test: { require_new_tests: true },
   // demo: { enabled: true }, // DISABLED: Demo feature disabled for redesign

@@ -33,7 +33,7 @@ describe('createAgent', () => {
 
   it('returns ClaudeBinaryAgent when provider is "binary"', () => {
     const agent = createAgent(buildConfig('binary'));
-    expect(ClaudeBinaryAgent).toHaveBeenCalled();
+    expect(ClaudeBinaryAgent).toHaveBeenCalledWith(false, 120_000);
     expect((agent as any)._type).toBe('binary');
   });
 
@@ -47,22 +47,30 @@ describe('createAgent', () => {
     const config = buildConfig();
     delete config.agent.provider;
     const agent = createAgent(config);
-    expect(ClaudeBinaryAgent).toHaveBeenCalled();
+    expect(ClaudeBinaryAgent).toHaveBeenCalledWith(false, 120_000);
     expect((agent as any)._type).toBe('binary');
   });
 
   it('defaults to binary when config is undefined', () => {
     const agent = createAgent(undefined);
-    expect(ClaudeBinaryAgent).toHaveBeenCalled();
+    expect(ClaudeBinaryAgent).toHaveBeenCalledWith(false, 120_000);
     expect((agent as any)._type).toBe('binary');
   });
 
   it('falls back to binary for unknown provider with warning', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const agent = createAgent(buildConfig('unknown'));
-    expect(ClaudeBinaryAgent).toHaveBeenCalled();
+    expect(ClaudeBinaryAgent).toHaveBeenCalledWith(false, 120_000);
     expect((agent as any)._type).toBe('binary');
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Unknown agent provider'));
     warnSpy.mockRestore();
+  });
+
+  it('passes custom timeout to ClaudeBinaryAgent', () => {
+    const config = buildConfig('binary');
+    config.agent.timeout = 300;
+    const agent = createAgent(config);
+    expect(ClaudeBinaryAgent).toHaveBeenCalledWith(false, 300_000);
+    expect((agent as any)._type).toBe('binary');
   });
 });
