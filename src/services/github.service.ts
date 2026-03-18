@@ -486,6 +486,33 @@ export class GitHubService {
   }
 
   /**
+   * Ensures the given labels exist in the repository, creating any that are missing.
+   * Uses LABEL_DETAILS for color/description when available.
+   *
+   * @param labelNames - Label names to ensure exist
+   * @returns Array of label names that were created (didn't previously exist)
+   */
+  async ensureLabels(labelNames: string[]): Promise<string[]> {
+    if (labelNames.length === 0) return [];
+
+    const existing = new Set(await this.listLabels());
+    const missing = labelNames.filter(name => !existing.has(name));
+
+    if (missing.length === 0) return [];
+
+    const { LABEL_DETAILS } = await import('../types/labels.types.js');
+    const labelsToSync = missing.map(name => {
+      const details = LABEL_DETAILS[name];
+      return details
+        ? { name, color: details.color, description: details.description }
+        : { name };
+    });
+
+    await this.syncLabels(labelsToSync);
+    return missing;
+  }
+
+  /**
    * Syncs labels to the GitHub repository.
    * Uses --force so existing labels are updated and missing ones are created.
    *

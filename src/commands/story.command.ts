@@ -93,6 +93,13 @@ export class StoryCommand extends BaseCommand {
 
     // Create parent issue
     const parentLabels = [...new Set([TYPE_LABELS.STORY, SPECIAL_LABELS.RIG_CREATED, ...defaultLabels])];
+
+    // Ensure all labels exist in the repo before creating the issue
+    const createdLabels = await this.github.ensureLabels(parentLabels);
+    if (createdLabels.length > 0) {
+      this.logger.info(`Created missing labels: ${createdLabels.join(', ')}`);
+    }
+
     let parentNumber: number;
     try {
       this.logger.command('gh issue create (parent)');
@@ -139,6 +146,15 @@ export class StoryCommand extends BaseCommand {
     if (!childConfirmed) {
       this.logger.warn('Child issue creation cancelled.');
       return;
+    }
+
+    // Ensure all child labels exist before creating issues
+    const allChildLabels = [...new Set(
+      childIssues.flatMap(child => [SPECIAL_LABELS.RIG_CREATED, ...(child.labels || []), ...defaultLabels])
+    )];
+    const createdChildLabels = await this.github.ensureLabels(allChildLabels);
+    if (createdChildLabels.length > 0) {
+      this.logger.info(`Created missing labels: ${createdChildLabels.join(', ')}`);
     }
 
     // Create child issues
