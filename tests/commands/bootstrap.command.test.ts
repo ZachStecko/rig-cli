@@ -228,6 +228,33 @@ describe('BootstrapCommand', () => {
       expect(mockLogger.success).toHaveBeenCalledWith('Frontend test dependencies installed');
     });
 
+    it('detects and uses npm when package-lock.json exists', async () => {
+      const frontendPath = path.join(testProjectRoot, 'frontend');
+      await writeFile(path.join(frontendPath, 'package-lock.json'), '');
+
+      await command.execute({ component: 'frontend' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('Detected package manager: npm');
+    });
+
+    it('detects and uses yarn when yarn.lock exists', async () => {
+      const frontendPath = path.join(testProjectRoot, 'frontend');
+      await writeFile(path.join(frontendPath, 'yarn.lock'), '');
+
+      await command.execute({ component: 'frontend' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('Detected package manager: yarn');
+    });
+
+    it('detects and uses pnpm when pnpm-lock.yaml exists', async () => {
+      const frontendPath = path.join(testProjectRoot, 'frontend');
+      await writeFile(path.join(frontendPath, 'pnpm-lock.yaml'), '');
+
+      await command.execute({ component: 'frontend' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('Detected package manager: pnpm');
+    });
+
     it('creates vitest.config.ts', async () => {
       await command.execute({ component: 'frontend' });
 
@@ -451,6 +478,31 @@ describe('BootstrapCommand', () => {
       expect(fs.existsSync(exampleTestPath)).toBe(true);
     });
 
+    it('detects and uses yarn for TypeScript backend', async () => {
+      const backendPath = path.join(testProjectRoot, 'backend');
+      await mkdir(backendPath, { recursive: true });
+      await writeFile(path.join(backendPath, 'yarn.lock'), '');
+      await writeFile(
+        path.join(backendPath, 'package.json'),
+        JSON.stringify({ name: 'test-backend', scripts: {} }, null, 2)
+      );
+
+      (command as any).prompt = vi.fn().mockImplementation((question: any) => {
+        const q = String(question);
+        if (q.includes('Go or TypeScript')) {
+          return Promise.resolve('typescript');
+        }
+        if (q.includes('backend')) {
+          return Promise.resolve(backendPath);
+        }
+        return Promise.resolve('');
+      });
+
+      await command.execute({ component: 'backend' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('Detected package manager: yarn');
+    });
+
     it('skips backend setup if user enters skip', async () => {
       // Mock prompt to return 'skip'
       (command as any).prompt = vi.fn().mockResolvedValue('skip');
@@ -620,6 +672,14 @@ describe('BootstrapCommand', () => {
       await command.execute({ component: 'node' });
 
       expect(mockLogger.info).toHaveBeenCalledWith('Skipping node setup');
+    });
+
+    it('detects and uses pnpm for node component', async () => {
+      await writeFile(path.join(testProjectRoot, 'pnpm-lock.yaml'), '');
+
+      await command.execute({ component: 'node' });
+
+      expect(mockLogger.dim).toHaveBeenCalledWith('Detected package manager: pnpm');
     });
   });
 
