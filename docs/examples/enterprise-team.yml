@@ -32,6 +32,9 @@ pr:
     - security-team
     - qa-lead
 
+git:
+  base_branch: develop  # Use "develop" as the base branch for all git operations
+
 github:
   repo: enterprise/core-platform
 
