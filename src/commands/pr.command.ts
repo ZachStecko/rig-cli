@@ -187,9 +187,11 @@ export class PrCommand extends BaseCommand {
         this.logger.info('Creating new pull request...');
 
         const prTitle = `${issueData.title}`;
+        const rigConfig = this.config.get();
         prUrl = await this.github.createPr({
           title: prTitle,
           body: prBody,
+          base: rigConfig.git?.base_branch,
         });
       }
 

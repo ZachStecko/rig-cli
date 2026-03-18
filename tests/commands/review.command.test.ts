@@ -176,7 +176,9 @@ describe('ReviewCommand', () => {
 
       expect(mockGitHub.viewPr).toHaveBeenCalledWith(123);
       expect(mockGitHub.viewIssue).toHaveBeenCalledWith(42);
-      expect(mockPromptBuilder.assembleReviewPrompt).toHaveBeenCalledWith(42);
+      expect(mockPromptBuilder.assembleReviewPrompt).toHaveBeenCalledWith(42, {
+        defaultBranch: undefined,
+      });
     });
 
     it('exits with error when --pr has invalid branch format', async () => {
@@ -231,7 +233,9 @@ describe('ReviewCommand', () => {
 
       await command.execute({ issue: '99' });
 
-      expect(mockPromptBuilder.assembleReviewPrompt).toHaveBeenCalledWith(99);
+      expect(mockPromptBuilder.assembleReviewPrompt).toHaveBeenCalledWith(99, {
+        defaultBranch: undefined,
+      });
     });
 
     it('errors on invalid issue number', async () => {

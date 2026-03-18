@@ -8,14 +8,27 @@ import { exec } from '../utils/shell.js';
  */
 export class GitService {
   private projectRoot: string;
+  private baseBranch?: string;
 
   /**
    * Creates a new GitService instance.
    *
    * @param projectRoot - Absolute path to the git repository root
+   * @param baseBranch - Optional configured base branch name (e.g. "main", "master", "develop")
    */
-  constructor(projectRoot: string) {
+  constructor(projectRoot: string, baseBranch?: string) {
     this.projectRoot = projectRoot;
+    this.baseBranch = baseBranch;
+  }
+
+  /**
+   * Sets the base branch for all git operations.
+   * Call this after loading config to apply the configured baseBranch.
+   *
+   * @param baseBranch - Branch name to use as base (e.g. "main", "develop")
+   */
+  setBaseBranch(baseBranch: string): void {
+    this.baseBranch = baseBranch;
   }
 
   /**
@@ -65,13 +78,16 @@ export class GitService {
   }
 
   /**
-   * Checks if currently on the master/main branch.
+   * Checks if currently on the base branch (master/main or configured baseBranch).
    *
-   * @returns true if on master or main, false otherwise
+   * @returns true if on the base branch, false otherwise
    * @throws Error if git command fails
    */
   async isOnMaster(): Promise<boolean> {
     const branch = await this.currentBranch();
+    if (this.baseBranch) {
+      return branch === this.baseBranch;
+    }
     return branch === 'master' || branch === 'main';
   }
 
@@ -97,12 +113,16 @@ export class GitService {
   }
 
   /**
-   * Checks out the master/main branch.
-   * Tries "main" first, falls back to "master" if main doesn't exist.
+   * Checks out the base branch (configured baseBranch, or main/master auto-detected).
    *
-   * @throws Error if neither master nor main branch exists
+   * @throws Error if the base branch does not exist
    */
   async checkoutMaster(): Promise<void> {
+    if (this.baseBranch) {
+      await this.git(`checkout ${this.baseBranch}`);
+      return;
+    }
+
     // Try main first (modern default)
     const mainResult = await this.git('checkout main', { ignoreErrors: true });
     if (mainResult.exitCode === 0) {
@@ -306,14 +326,18 @@ export class GitService {
   }
 
   /**
-   * Gets the name of the master branch (main or master).
-   * Checks which one exists in the repository.
+   * Gets the name of the base branch.
+   * Returns the configured baseBranch if set, otherwise auto-detects main or master.
    *
    * @private
-   * @returns "main" or "master"
-   * @throws Error if neither branch exists
+   * @returns The base branch name
+   * @throws Error if no base branch can be determined
    */
   private async getMasterBranchName(): Promise<string> {
+    if (this.baseBranch) {
+      return this.baseBranch;
+    }
+
     // Check if main exists
     const mainResult = await this.git('rev-parse --verify main', { ignoreErrors: true });
     if (mainResult.exitCode === 0) {

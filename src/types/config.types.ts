@@ -42,6 +42,14 @@ export interface TestConfig {
 // }
 
 /**
+ * Configuration for git operations.
+ */
+export interface GitConfig {
+  /** Base branch name for diff/merge operations (default: auto-detect main or master) */
+  base_branch?: string;
+}
+
+/**
  * Configuration for pull request creation.
  */
 export interface PrConfig {
@@ -86,6 +94,7 @@ export interface RigConfig {
   test: TestConfig;
   // demo: DemoConfig; // DISABLED: Demo feature disabled for redesign
   pr: PrConfig;
+  git: GitConfig;
   /** Enable verbose debug output (default: false) */
   verbose?: boolean;
   components?: ComponentsConfig;
@@ -103,5 +112,6 @@ export const DEFAULT_CONFIG: RigConfig = {
   test: { require_new_tests: true },
   // demo: { enabled: true }, // DISABLED: Demo feature disabled for redesign
   pr: { draft: false, reviewers: [] },
+  git: {},
   verbose: false,
 };

@@ -9,6 +9,7 @@ rig-cli uses a YAML configuration file (`.rig.yml`) in your project root. All se
 - [Queue Configuration](#queue-configuration)
 - [Test Configuration](#test-configuration)
 - [PR Configuration](#pr-configuration)
+- [Git Configuration](#git-configuration)
 - [GitHub Configuration](#github-configuration)
 - [Component Configuration](#component-configuration)
 - [Verbose Mode](#verbose-mode)
@@ -278,6 +279,43 @@ GitHub usernames only (not email addresses).
 - Reviewers must have repo access
 - Maximum reviewers per PR: 15 (GitHub limit)
 - Fails silently if user doesn't exist
+
+## Git Configuration
+
+Controls git operations across all commands.
+
+### `git.base_branch`
+
+**Type:** `string`
+**Default:** Auto-detected (`main` or `master`)
+
+The base branch used for diff comparisons, PR targets, and branch creation.
+
+When omitted, rig-cli auto-detects by checking for `main` first, then `master`.
+
+```yaml
+git:
+  base_branch: develop
+```
+
+**When to set explicitly:**
+- Your project uses `develop`, `trunk`, or another branch as the integration branch
+- Auto-detection picks the wrong branch (e.g., both `main` and `master` exist)
+- Working with a non-standard branching strategy (e.g., GitFlow)
+
+**Affected commands:**
+- `rig ship` — creates feature branches from the base branch and targets it for PRs
+- `rig pr` — sets the base branch for pull request creation
+- `rig review` — diffs against the base branch
+- `rig test` — compares changes against the base branch
+- `rig implement` — uses the base branch for context
+- `rig next` — creates feature branches from the base branch
+
+**Example: GitFlow workflow**
+```yaml
+git:
+  base_branch: develop  # Feature branches merge into develop, not main
+```
 
 ## GitHub Configuration
 
