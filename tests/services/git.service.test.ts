@@ -717,6 +717,84 @@ describe('GitService', () => {
     });
   });
 
+  describe('commitAll', () => {
+    it('stages all changes and commits', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.commitAll('fix: simple message');
+
+      expect(mockExec).toHaveBeenCalledWith(`git -C "${projectRoot}" add -A`);
+      expect(mockExec).toHaveBeenCalledWith(
+        `git -C "${projectRoot}" commit -m "fix: simple message"`
+      );
+    });
+
+    it('escapes backticks in commit messages', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.commitAll('fix: update `composition.ts` types');
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'git -C "' + projectRoot + '" commit -m "fix: update \\\\`composition.ts\\\\` types"'
+      );
+    });
+
+    it('escapes dollar signs in commit messages', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.commitAll('fix: handle $variable interpolation');
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'git -C "' + projectRoot + '" commit -m "fix: handle \\\\$variable interpolation"'
+      );
+    });
+
+    it('escapes both backticks and dollar signs together', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.commitAll('fix: `Composition.key` typed as $string');
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'git -C "' + projectRoot + '" commit -m "fix: \\\\`Composition.key\\\\` typed as \\\\$string"'
+      );
+    });
+  });
+
+  describe('getBaseBranchName', () => {
+    it('returns main when main branch exists', async () => {
+      mockExec.mockResolvedValueOnce({ stdout: 'abc123\n', stderr: '', exitCode: 0 });
+
+      const result = await gitService.getBaseBranchName();
+
+      expect(result).toBe('main');
+    });
+
+    it('returns master when main does not exist but master does', async () => {
+      mockExec.mockResolvedValueOnce({ stdout: '', stderr: 'fatal', exitCode: 128 });
+      mockExec.mockResolvedValueOnce({ stdout: 'def456\n', stderr: '', exitCode: 0 });
+
+      const result = await gitService.getBaseBranchName();
+
+      expect(result).toBe('master');
+    });
+
+    it('throws when neither main nor master exists', async () => {
+      mockExec.mockResolvedValueOnce({ stdout: '', stderr: 'fatal', exitCode: 128 });
+      mockExec.mockResolvedValueOnce({ stdout: '', stderr: 'fatal', exitCode: 128 });
+
+      await expect(gitService.getBaseBranchName()).rejects.toThrow('Neither "main" nor "master" branch found');
+    });
+
+    it('returns configured baseBranch without auto-detection', async () => {
+      const customGit = new GitService(projectRoot, 'develop');
+
+      const result = await customGit.getBaseBranchName();
+
+      expect(result).toBe('develop');
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+  });
+
   describe('configured baseBranch', () => {
     let customGit: GitService;
 

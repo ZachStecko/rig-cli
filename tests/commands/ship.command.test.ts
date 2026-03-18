@@ -111,6 +111,7 @@ describe('ShipCommand', () => {
         labels: [{ name: 'fullstack' }],
         state: 'OPEN',
       }),
+      closeIssue: vi.fn().mockResolvedValue(undefined),
     } as any;
 
     mockGuard = {
@@ -403,6 +404,15 @@ describe('ShipCommand', () => {
       expect((command as any).testCommand.execute).toHaveBeenCalledTimes(3);
       expect(mockLogger.error).toHaveBeenCalledWith('Tests failed after 3 attempts. Pipeline aborted.');
       expect(mockLogger.info).toHaveBeenCalledWith(`Run 'rig test' to retry, or 'rig reset' to abandon this issue.`);
+    });
+
+    it('closes issue after pipeline completes', async () => {
+      vi.mocked(mockState.exists).mockResolvedValue(false);
+      vi.mocked(mockState.read).mockResolvedValue(defaultFreshState);
+
+      await command.execute();
+
+      expect(mockGitHub.closeIssue).toHaveBeenCalledWith(42);
     });
 
     it('displays success message on completion', async () => {

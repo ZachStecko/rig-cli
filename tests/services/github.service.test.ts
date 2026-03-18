@@ -435,6 +435,29 @@ describe('GitHubService', () => {
     });
   });
 
+  describe('closeIssue', () => {
+    it('closes an issue by number', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await githubService.closeIssue(42);
+
+      expect(mockExec).toHaveBeenCalledWith(
+        'gh issue close 42',
+        { cwd: projectRoot }
+      );
+    });
+
+    it('throws when issue does not exist', async () => {
+      mockExec.mockResolvedValue({
+        stdout: '',
+        stderr: 'issue not found',
+        exitCode: 1,
+      });
+
+      await expect(githubService.closeIssue(999)).rejects.toThrow('GitHub CLI command failed');
+    });
+  });
+
   describe('prListByHead', () => {
     it('returns list of PRs by branch name', async () => {
       const mockPrs = [

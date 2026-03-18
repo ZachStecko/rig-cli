@@ -293,7 +293,7 @@ When done, all requested changes should be implemented and the PR should be read
       lenses = 'Skeptic, Architect, Minimalist';
     }
 
-    const defaultBranch = options?.defaultBranch || 'master';
+    const defaultBranch = options?.defaultBranch || await this.git.getBaseBranchName();
 
     // Generate timestamp in format: YYYY-MM-DD-HHMMSS (matches harbourflow)
     const timestamp = new Date()

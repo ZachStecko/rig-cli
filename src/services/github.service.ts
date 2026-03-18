@@ -428,6 +428,16 @@ export class GitHubService {
   }
 
   /**
+   * Closes a GitHub issue.
+   *
+   * @param issueNumber - Issue number to close
+   * @throws Error if issue doesn't exist or close operation fails
+   */
+  async closeIssue(issueNumber: number): Promise<void> {
+    await this.gh(`issue close ${issueNumber}`);
+  }
+
+  /**
    * Auto-detects PR number from current branch.
    *
    * @param branchName - Branch name to check for associated PR
