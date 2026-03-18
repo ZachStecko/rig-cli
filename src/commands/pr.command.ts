@@ -226,8 +226,8 @@ export class PrCommand extends BaseCommand {
   }
 
   /**
-   * Handles PR feedback workflow: prompts for user comments, posts to GitHub,
-   * runs agent to fix issues, and posts reply.
+   * Handles PR feedback workflow: fetches review comments, generates specific responses
+   * addressing each comment with file/line context, and posts replies.
    *
    * @param prNumberOption - Optional PR number (auto-detects if not provided)
    */
@@ -235,7 +235,7 @@ export class PrCommand extends BaseCommand {
     // Check GitHub authentication
     await this.guard.requireGhAuth();
 
-    this.logger.header('PR Feedback & Fix');
+    this.logger.header('PR Review Reply');
     console.log('');
 
     // Determine PR number
@@ -274,114 +274,170 @@ export class PrCommand extends BaseCommand {
     this.logger.info(`Branch: ${prData.headRefName}`);
     console.log('');
 
-    // Checkout the PR branch if not already on it
-    const currentBranch = await this.git.currentBranch();
-    if (currentBranch !== prData.headRefName) {
-      this.logger.info(`Checking out branch: ${prData.headRefName}`);
+    // Fetch review comments
+    this.logger.step(1, 3, 'Fetching PR review comments...');
+    const reviewComments = await this.github.getPrReviewComments(prNumber);
 
-      // Validate branch name before checkout (defense in depth)
-      const validBranchPattern = /^[a-zA-Z0-9/_.-]+$/;
-      if (!validBranchPattern.test(prData.headRefName) || prData.headRefName.startsWith('-')) {
-        this.logger.error(`Invalid branch name: ${prData.headRefName}`);
-        process.exit(1);
-        return;
-      }
-
-      const result = await exec(`git checkout ${prData.headRefName}`, { cwd: this.projectRoot });
-      if (result.exitCode !== 0) {
-        this.logger.error(`Failed to checkout branch: ${result.stderr}`);
-        process.exit(1);
-        return;
-      }
+    if (reviewComments.length === 0) {
+      this.logger.warn('No review comments found on this PR.');
       console.log('');
-    }
-
-    // Prompt for user feedback
-    this.logger.info('Describe the issues to fix (multiline input):');
-    this.logger.dim('  Press Ctrl+D when done');
-    console.log('');
-
-    const userFeedback = await this.promptMultiline();
-
-    if (!userFeedback.trim()) {
-      this.logger.warn('No feedback provided. Aborting.');
+      this.logger.info('Nothing to reply to.');
       return;
     }
 
-    console.log('');
-    this.logger.info('Feedback received. Processing...');
-    console.log('');
-
-    // Post feedback as GitHub comment and get the comment ID
-    this.logger.step(1, 4, 'Posting feedback to GitHub PR...');
-    const userCommentId = await this.github.prComment(prNumber, userFeedback);
+    this.logger.info(`Found ${reviewComments.length} review comment${reviewComments.length > 1 ? 's' : ''}`);
     console.log('');
 
-    // Build prompt for agent
-    this.logger.step(2, 4, 'Preparing fix prompt for agent...');
-    const fixPrompt = await this.promptBuilder.assemblePrFixPrompt(userFeedback, prNumber);
+    // Generate replies for each comment using LLM
+    this.logger.step(2, 3, 'Generating specific replies for each comment...');
     console.log('');
 
-    // Run Claude agent
-    this.logger.step(3, 4, 'Running Claude agent to address feedback...');
-
-    // Get config for permission mode
+    // Get config for agent
     const configData = this.config.get();
-    const permissionMode = configData.agent?.permission_mode || 'default';
-    const maxTurns = configData.agent?.max_turns || 80;
+    const maxTurns = configData.agent?.max_turns || 20;
     const verbose = configData.verbose || false;
 
-    // Create log file path
-    const logFile = `${this.projectRoot}/.rig-logs/pr-feedback-${prNumber}.log`;
+    const replies: Array<{ commentId: number; reply: string; file: string; line: number | null }> = [];
 
-    try {
-      const feedbackAgent = createAgent(this.config.get());
-      const feedbackSession = await feedbackAgent.createSession({
-        prompt: fixPrompt,
-        maxIterations: maxTurns,
-        logFile,
-        verbose,
-        providerOptions: { permissionMode },
-      });
+    for (let i = 0; i < reviewComments.length; i++) {
+      const comment = reviewComments[i];
+      const lineInfo = comment.line
+        ? `line ${comment.line}`
+        : comment.start_line
+        ? `lines ${comment.start_line}-${comment.line || '?'}`
+        : 'unknown line';
 
-      // Stream events (optionally show verbose output)
-      for await (const event of feedbackSession.events) {
-        if (verbose && event.type === 'text') {
-          process.stdout.write(event.content);
+      this.logger.info(`[${i + 1}/${reviewComments.length}] ${comment.path}:${lineInfo}`);
+      this.logger.dim(`  Comment: ${comment.body.substring(0, 80)}${comment.body.length > 80 ? '...' : ''}`);
+
+      // Build prompt with full context for this specific comment
+      const prompt = this.buildReviewCommentReplyPrompt(comment, prData.title);
+
+      // Create log file for this reply
+      const logFile = `${this.projectRoot}/.rig-logs/pr-${prNumber}-reply-${comment.id}.log`;
+
+      try {
+        const agent = createAgent(this.config.get());
+        const session = await agent.createSession({
+          prompt,
+          maxIterations: maxTurns,
+          logFile,
+          verbose,
+          providerOptions: { permissionMode: 'default' },
+        });
+
+        let replyText = '';
+        for await (const event of session.events) {
+          if (event.type === 'text') {
+            replyText += event.content;
+            if (verbose) {
+              process.stdout.write(event.content);
+            }
+          }
         }
+
+        // Extract reply from agent output (agent should output just the reply text)
+        const reply = replyText.trim();
+
+        if (reply.length === 0) {
+          this.logger.warn(`  No reply generated for comment ${comment.id}`);
+          continue;
+        }
+
+        replies.push({
+          commentId: comment.id,
+          reply,
+          file: comment.path,
+          line: comment.line,
+        });
+
+        this.logger.success(`  Reply generated (${reply.length} chars)`);
+      } catch (error) {
+        this.logger.error(`  Failed to generate reply: ${(error as Error).message}`);
+        continue;
       }
-    } catch (error) {
-      this.logger.error(`Agent failed: ${(error as Error).message}`);
+
+      console.log('');
+    }
+
+    if (replies.length === 0) {
+      this.logger.error('No replies were generated successfully.');
       process.exit(1);
       return;
     }
 
+    // Post all replies
+    this.logger.step(3, 3, `Posting ${replies.length} repl${replies.length === 1 ? 'y' : 'ies'} to PR...`);
     console.log('');
 
-    // Push changes
-    this.logger.step(4, 4, 'Pushing changes to remote...');
-    await this.git.push();
-    console.log('');
+    for (let i = 0; i < replies.length; i++) {
+      const { commentId, reply, file, line } = replies[i];
+      const lineInfo = line ? `line ${line}` : 'unknown line';
 
-    // Post reply comment on GitHub with fix summary (referencing the user's comment)
-    const replyMessage = `Addressed the feedback. Changes have been pushed to the PR.
+      this.logger.info(`[${i + 1}/${replies.length}] Replying to ${file}:${lineInfo}`);
 
-Summary of fixes:
-- Analyzed all feedback points
-- Made requested changes
-- Tested the implementation
-- Pushed updates
-
-Please review the changes.`;
-
-    await this.github.prCommentWithReference(prNumber, replyMessage, userCommentId);
-    this.logger.success('Posted update to GitHub PR');
+      try {
+        await this.github.replyToPrReviewComment(prNumber, commentId, reply);
+        this.logger.success('  Posted successfully');
+      } catch (error) {
+        this.logger.error(`  Failed to post reply: ${(error as Error).message}`);
+      }
+    }
 
     console.log('');
-    this.logger.success('PR feedback addressed successfully');
+    this.logger.success(`PR review replies posted successfully (${replies.length}/${reviewComments.length})`);
 
     // Get repository name and display PR URL
     const repoName = await this.github.repoName();
     console.log(`  https://github.com/${repoName}/pull/${prNumber}`);
+  }
+
+  /**
+   * Builds a prompt for generating a specific reply to a review comment.
+   * Includes file path, line numbers, code context, and reviewer's feedback.
+   *
+   * @param comment - Review comment object with path, line, body, diff_hunk
+   * @param prTitle - PR title for context
+   * @returns Prompt string for LLM
+   */
+  private buildReviewCommentReplyPrompt(
+    comment: {
+      path: string;
+      line: number | null;
+      start_line: number | null;
+      body: string;
+      diff_hunk: string;
+    },
+    prTitle: string
+  ): string {
+    const lineInfo = comment.line
+      ? `Line: ${comment.line}`
+      : comment.start_line
+      ? `Lines: ${comment.start_line}-${comment.line || 'end'}`
+      : 'Line: (not specified)';
+
+    return `You are responding to a PR review comment.
+
+PR: ${prTitle}
+File: ${comment.path}
+${lineInfo}
+
+Reviewer's comment:
+${comment.body}
+
+Code context:
+\`\`\`
+${comment.diff_hunk || '(no diff context available)'}
+\`\`\`
+
+Provide a specific response that:
+- References the exact file (${comment.path}) and the concern mentioned
+- Addresses what will be changed or why the current code is correct
+- Avoids generic responses like "I'll look into that" or "Thanks for the feedback"
+- Is concise and actionable (2-4 sentences)
+
+Your response should demonstrate that you understand the specific code and concern, not give a vague acknowledgment.
+
+Output only the reply text, nothing else.`;
   }
 }

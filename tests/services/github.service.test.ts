@@ -857,4 +857,134 @@ describe('GitHubService', () => {
       ).rejects.toThrow('Invalid label');
     });
   });
+
+  describe('getPrReviewComments', () => {
+    it('fetches review comments with full context', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: JSON.stringify({
+          id: 1,
+          path: 'src/auth.ts',
+          line: 42,
+          start_line: null,
+          body: 'Should add input validation',
+          diff_hunk: '@@ -40,3 +40,5 @@\n+function login() {}',
+          user: { login: 'reviewer' },
+        }) + '\n' + JSON.stringify({
+          id: 2,
+          path: 'src/utils.ts',
+          line: 15,
+          start_line: 10,
+          body: 'Consider async/await',
+          diff_hunk: '@@ -8,5 +8,7 @@\n+async function fetch() {}',
+          user: { login: 'reviewer2' },
+        }),
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await githubService.getPrReviewComments(123);
+
+      expect(result).toEqual([
+        {
+          id: 1,
+          path: 'src/auth.ts',
+          line: 42,
+          start_line: null,
+          body: 'Should add input validation',
+          diff_hunk: '@@ -40,3 +40,5 @@\n+function login() {}',
+          user: { login: 'reviewer' },
+        },
+        {
+          id: 2,
+          path: 'src/utils.ts',
+          line: 15,
+          start_line: 10,
+          body: 'Consider async/await',
+          diff_hunk: '@@ -8,5 +8,7 @@\n+async function fetch() {}',
+          user: { login: 'reviewer2' },
+        },
+      ]);
+      expect(mockExec).toHaveBeenNthCalledWith(2,
+        'gh api repos/owner/repo/pulls/123/comments --jq \'.[] | {id, path, line, start_line, body, diff_hunk, user: {login: .user.login}}\'',
+        { cwd: projectRoot }
+      );
+    });
+
+    it('returns empty array when no comments exist', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await githubService.getPrReviewComments(123);
+
+      expect(result).toEqual([]);
+    });
+
+    it('throws on API failure', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'Not Found',
+        exitCode: 1,
+      });
+
+      await expect(githubService.getPrReviewComments(123)).rejects.toThrow('GitHub CLI command failed');
+    });
+  });
+
+  describe('replyToPrReviewComment', () => {
+    it('posts reply to review comment', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: '999',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await githubService.replyToPrReviewComment(123, 456, 'Fixed this issue');
+
+      expect(result).toBe(999);
+      expect(mockExec).toHaveBeenNthCalledWith(2,
+        expect.stringContaining('gh api repos/owner/repo/pulls/123/comments/456/replies -F body=@'),
+        { cwd: projectRoot }
+      );
+    });
+
+    it('throws on API failure', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo',
+        stderr: '',
+        exitCode: 0,
+      });
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: 'Not Found',
+        exitCode: 1,
+      });
+
+      await expect(
+        githubService.replyToPrReviewComment(123, 456, 'Reply text')
+      ).rejects.toThrow('GitHub CLI command failed');
+    });
+  });
 });

@@ -467,6 +467,74 @@ export class GitHubService {
   }
 
   /**
+   * Fetches review comments for a pull request.
+   * Returns comments with file path, line numbers, body text, and code context.
+   *
+   * @param prNumber - PR number
+   * @returns Array of review comment objects with path, line, body, diff_hunk
+   * @throws Error if PR doesn't exist or gh command fails
+   */
+  async getPrReviewComments(prNumber: number): Promise<Array<{
+    id: number;
+    path: string;
+    line: number | null;
+    start_line: number | null;
+    body: string;
+    diff_hunk: string;
+    user: { login: string };
+  }>> {
+    const repoName = await this.repoName();
+    const [owner, repo] = repoName.split('/');
+
+    const result = await this.gh(
+      `api repos/${owner}/${repo}/pulls/${prNumber}/comments --jq '.[] | {id, path, line, start_line, body, diff_hunk, user: {login: .user.login}}'`
+    );
+
+    if (!result.stdout.trim()) {
+      return [];
+    }
+
+    try {
+      const lines = result.stdout.trim().split('\n');
+      return lines.map(line => JSON.parse(line));
+    } catch (error) {
+      throw new Error(
+        `Failed to parse GitHub API review comments: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+    }
+  }
+
+  /**
+   * Replies to a specific review comment on a pull request.
+   * Creates a reply comment in the review thread.
+   *
+   * @param prNumber - PR number
+   * @param commentId - Review comment ID to reply to
+   * @param body - Reply body text
+   * @returns The ID of the created reply comment
+   * @throws Error if PR or comment doesn't exist or reply fails
+   */
+  async replyToPrReviewComment(prNumber: number, commentId: number, body: string): Promise<number> {
+    const repoName = await this.repoName();
+    const [owner, repo] = repoName.split('/');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
+    const bodyFile = join(tmpDir, 'reply.txt');
+
+    try {
+      await writeFile(bodyFile, body, 'utf-8');
+
+      const result = await this.gh(
+        `api repos/${owner}/${repo}/pulls/${prNumber}/comments/${commentId}/replies -F body=@${bodyFile} --jq .id`
+      );
+
+      return parseInt(result.stdout.trim(), 10);
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+
+  /**
    * Lists all label names on the repository.
    *
    * @returns Array of label names
