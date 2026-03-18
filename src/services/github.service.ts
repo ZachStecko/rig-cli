@@ -75,7 +75,7 @@ export class GitHubService {
     if (options.labels && options.labels.length > 0) {
       // Validate all labels to prevent command injection
       options.labels.forEach(label => this.validateLabel(label));
-      args.push('--label', options.labels.join(','));
+      args.push('--label', `"${options.labels.join(',')}"`);
     }
 
     if (options.assignee) {
@@ -244,7 +244,8 @@ export class GitHubService {
       if (options.labels && options.labels.length > 0) {
         // Validate all labels to prevent command injection
         options.labels.forEach(label => this.validateLabel(label));
-        args.push('--label', options.labels.join(','));
+        args.push('--label', `"${options.labels.join(',')}"`);
+
       }
 
       if (options.assignees && options.assignees.length > 0) {
@@ -482,6 +483,33 @@ export class GitHubService {
         `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
       );
     }
+  }
+
+  /**
+   * Ensures the given labels exist in the repository, creating any that are missing.
+   * Uses LABEL_DETAILS for color/description when available.
+   *
+   * @param labelNames - Label names to ensure exist
+   * @returns Array of label names that were created (didn't previously exist)
+   */
+  async ensureLabels(labelNames: string[]): Promise<string[]> {
+    if (labelNames.length === 0) return [];
+
+    const existing = new Set(await this.listLabels());
+    const missing = labelNames.filter(name => !existing.has(name));
+
+    if (missing.length === 0) return [];
+
+    const { LABEL_DETAILS } = await import('../types/labels.types.js');
+    const labelsToSync = missing.map(name => {
+      const details = LABEL_DETAILS[name];
+      return details
+        ? { name, color: details.color, description: details.description }
+        : { name };
+    });
+
+    await this.syncLabels(labelsToSync);
+    return missing;
   }
 
   /**

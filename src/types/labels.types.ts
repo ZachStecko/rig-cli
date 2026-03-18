@@ -47,6 +47,7 @@ export const TYPE_LABELS = {
   DOCS: 'docs',
   CHORE: 'chore',
   TEST: 'test',
+  STORY: 'story',
 } as const;
 
 /**
@@ -115,6 +116,7 @@ export const LABEL_DETAILS: Record<string, { color: string; description: string 
   [TYPE_LABELS.DOCS]: { color: '0075ca', description: 'Documentation changes' },
   [TYPE_LABELS.CHORE]: { color: 'cfd3d7', description: 'Maintenance and chores' },
   [TYPE_LABELS.TEST]: { color: 'bfd4f2', description: 'Test-related changes' },
+  [TYPE_LABELS.STORY]: { color: 'c5def5', description: 'Story — parent issue representing a planning spec' },
   // Status labels (yellow/orange)
   [STATUS_LABELS.NEEDS_TRIAGE]: { color: 'fbca04', description: 'Needs triage and prioritization' },
   [STATUS_LABELS.NEEDS_REVIEW]: { color: 'f9d0c4', description: 'Ready for code review' },

@@ -213,4 +213,162 @@ export class AuthService {
       expect(promptArg).toContain('never just "typescript" without backticks');
     });
   });
+
+  describe('decomposeStory', () => {
+    beforeEach(() => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: true,
+        error: null,
+      });
+    });
+
+    it('throws error when agent is not authenticated', async () => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: false,
+        error: 'API key not set',
+      });
+
+      await expect(
+        llmService.decomposeStory('spec content', 1)
+      ).rejects.toThrow('API key not set');
+    });
+
+    it('throws error when agent does not support prompt method', async () => {
+      const agentWithoutPrompt = {
+        isAvailable: vi.fn(),
+        checkAuth: vi.fn().mockResolvedValue({ authenticated: true, error: null }),
+        waitForCompletion: vi.fn(),
+      } as any;
+
+      const service = new LLMService(agentWithoutPrompt);
+
+      await expect(
+        service.decomposeStory('spec content', 1)
+      ).rejects.toThrow('Agent does not support the prompt() method');
+    });
+
+    it('parses valid JSON array response', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'cli: Add story label', body: 'Parent story: #5\n\nAdd label.', labels: ['backend'] },
+        { title: 'cli: Add decompose method', body: 'Parent story: #5\n\nAdd method.', labels: ['backend'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec content', 5);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].title).toBe('cli: Add story label');
+      expect(result[1].title).toBe('cli: Add decompose method');
+    });
+
+    it('extracts JSON array from response with preamble', async () => {
+      const mockResponse = 'Here are the issues:\n[{"title": "Add auth", "body": "Details.", "labels": []}]';
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe('Add auth');
+    });
+
+    it('throws error when response has no JSON array', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('Just some text without JSON');
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('Failed to parse decomposed issues response');
+    });
+
+    it('throws error when response is empty array', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('[]');
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('LLM returned no child issues from spec decomposition');
+    });
+
+    it('throws error when a child issue has empty title', async () => {
+      const mockResponse = JSON.stringify([
+        { title: '', body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('LLM returned a child issue with an empty title');
+    });
+
+    it('throws error when a child issue has empty body', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: '', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('LLM returned a child issue with an empty body');
+    });
+
+    it('truncates child issue titles exceeding GitHub limit', async () => {
+      const longTitle = 'a'.repeat(300);
+      const mockResponse = JSON.stringify([
+        { title: longTitle, body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].title.length).toBe(256);
+      expect(result[0].title).toMatch(/\.\.\.$/);
+    });
+
+    it('filters invalid labels from child issues', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Details.', labels: ['backend', 'invalid-label', 'feature'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].labels).toEqual(['backend', 'feature']);
+      expect(result[0].labels).not.toContain('invalid-label');
+    });
+
+    it('includes parent issue number in prompt', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Parent story: #42\n\nDetails.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.decomposeStory('spec content', 42);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('#42');
+    });
+
+    it('includes spec content in prompt', async () => {
+      const specContent = '# My Feature\n\nDetailed requirements here.';
+      const mockResponse = JSON.stringify([
+        { title: 'Add feature', body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.decomposeStory(specContent, 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain(specContent);
+    });
+
+    it('prompt instructs not to add features beyond spec', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add feature', body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.decomposeStory('spec', 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('Do not add features, enhancements, or nice-to-haves beyond what the spec explicitly details');
+    });
+  });
 });

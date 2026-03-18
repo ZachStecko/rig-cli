@@ -57,6 +57,7 @@ describe('CreateIssueCommand', () => {
     mockGitHub = {
       createIssue: vi.fn(),
       repoName: vi.fn(),
+      ensureLabels: vi.fn().mockResolvedValue([]),
     } as any;
 
     mockGuard = {

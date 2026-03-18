@@ -146,7 +146,7 @@ describe('GitHubService', () => {
       await githubService.listIssues({ labels: ['bug', 'p0'] });
 
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('--label bug,p0'),
+        expect.stringContaining('--label "bug,p0"'),
         { cwd: projectRoot }
       );
     });
@@ -238,7 +238,7 @@ describe('GitHubService', () => {
       await githubService.listIssues({ labels: ['bug fix', 'priority:p0', 'v2.0'] });
 
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('--label bug fix,priority:p0,v2.0'),
+        expect.stringContaining('--label "bug fix,priority:p0,v2.0"'),
         { cwd: projectRoot }
       );
     });

@@ -121,6 +121,92 @@ Always include one component label (backend, frontend, fullstack, devnet, node, 
   }
 
   /**
+   * Decomposes a planning spec into atomic child issues.
+   *
+   * Takes a full spec/PRD content and a parent issue number, then uses Claude
+   * to break it down into small, independently implementable GitHub issues.
+   * Each child issue body includes a reference back to the parent story.
+   *
+   * @param specContent - The full planning spec / PRD content
+   * @param parentIssueNumber - The parent story issue number for cross-referencing
+   * @returns Array of structured child issues
+   * @throws Error if API key is not set, API call fails, or response cannot be parsed
+   */
+  async decomposeStory(specContent: string, parentIssueNumber: number): Promise<StructuredIssue[]> {
+    const auth = await this.agent.checkAuth();
+    if (!auth.authenticated) {
+      throw new Error(auth.error || 'Agent is not available. Check your configuration.');
+    }
+
+    const validLabels = getAllValidLabels();
+    const prompt = `You are decomposing a planning spec into atomic GitHub issues for implementation by Claude Code.
+
+Each issue must be independently implementable — a single developer should be able to pick it up and complete it without needing other issues to be done first (unless explicitly noted as a dependency).
+
+Planning spec:
+${specContent}
+
+RULES:
+- Only create issues for work explicitly described in the spec. Do not add features, enhancements, or nice-to-haves beyond what the spec explicitly details.
+- Each issue must be small and focused — one concern per issue.
+- Order issues by implementation dependency (foundational work first).
+- Every issue body must start with "Parent story: #${parentIssueNumber}" on the first line, followed by a blank line.
+- Use the same issue body format: ## Problem / Motivation, ## Implementation Details, ## Testing Strategy, ## Acceptance Criteria. Skip sections that don't apply.
+- Titles: imperative, 50-80 chars, with component prefix if clear (cli: / api: / ui: / etc.)
+- No filler prose. Senior engineer to senior engineer tone.
+
+For "labels" on each issue, pick 1-4 from this list: ${validLabels.join(', ')}
+Always include one component label and one type label.
+
+Respond with ONLY a valid JSON array of objects, each with "title", "body", and "labels" fields. No markdown fences, no explanation.`;
+
+    if (!this.agent.prompt) {
+      throw new Error('Agent does not support the prompt() method');
+    }
+    const responseText = await this.agent.prompt(prompt);
+
+    let issues: StructuredIssue[];
+    try {
+      try {
+        issues = JSON.parse(responseText.trim()) as StructuredIssue[];
+      } catch {
+        const jsonStart = responseText.indexOf('[');
+        const jsonEnd = responseText.lastIndexOf(']');
+        if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+          throw new Error('No JSON array found in response');
+        }
+        const jsonText = responseText.substring(jsonStart, jsonEnd + 1);
+        issues = JSON.parse(jsonText) as StructuredIssue[];
+      }
+    } catch (error) {
+      throw new Error(
+        `Failed to parse decomposed issues response: ${error instanceof Error ? error.message : 'Unknown error'}\nReceived: ${responseText.substring(0, 500)}`
+      );
+    }
+
+    if (!Array.isArray(issues) || issues.length === 0) {
+      throw new Error('LLM returned no child issues from spec decomposition');
+    }
+
+    for (const issue of issues) {
+      if (!issue.title?.trim()) {
+        throw new Error('LLM returned a child issue with an empty title');
+      }
+      if (!issue.body?.trim()) {
+        throw new Error('LLM returned a child issue with an empty body');
+      }
+      if (issue.title.length > GITHUB_TITLE_MAX_LENGTH) {
+        issue.title = issue.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
+      }
+      if (issue.labels) {
+        issue.labels = issue.labels.filter(l => isValidLabel(l));
+      }
+    }
+
+    return issues;
+  }
+
+  /**
    * Builds the prompt for structuring an issue.
    *
    * @param rawDescription - User's raw description
