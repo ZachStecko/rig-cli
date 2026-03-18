@@ -1,5 +1,3 @@
-import { readFile } from 'fs/promises';
-import { resolve } from 'path';
 import { BaseCommand } from './base-command.js';
 import { Logger } from '../services/logger.service.js';
 import { ConfigManager } from '../services/config-manager.service.js';
@@ -15,7 +13,7 @@ import { TYPE_LABELS, SPECIAL_LABELS } from '../types/labels.types.js';
  * and a set of atomic child issues on GitHub.
  *
  * Workflow:
- * 1. Read spec file from --file path
+ * 1. Prompt user for spec content via multiline input
  * 2. Use LLM to structure parent story issue
  * 3. Display preview, get user confirmation
  * 4. Create parent issue with 'story' + 'rig-created' labels
@@ -40,7 +38,7 @@ export class StoryCommand extends BaseCommand {
     this.llm = new LLMService(undefined, this.config.get());
   }
 
-  async execute(options: { file: string }): Promise<void> {
+  async execute(): Promise<void> {
     const rigConfig = this.config.get();
     const defaultLabels = rigConfig.defaultLabels || [];
 
@@ -49,22 +47,17 @@ export class StoryCommand extends BaseCommand {
     this.logger.header('Decompose Planning Spec');
     console.log('');
 
-    // Read spec file
-    const filePath = resolve(this.projectRoot, options.file);
-    let specContent: string;
-    try {
-      specContent = await readFile(filePath, 'utf-8');
-    } catch {
-      this.logger.error(`Could not read spec file: ${filePath}`);
-      return;
-    }
+    // Prompt for spec content
+    this.logger.info('Paste your planning spec / PRD (multiline input):');
+    this.logger.dim('  Press Ctrl+D when done');
+    console.log('');
+    const specContent = await this.promptMultiline();
 
     if (!specContent.trim()) {
-      this.logger.error('Spec file is empty.');
+      this.logger.warn('No spec content provided. Aborting.');
       return;
     }
 
-    this.logger.config('Spec file', options.file);
     this.logger.config('Spec length', `${specContent.length} chars`);
 
     // Check LLM availability

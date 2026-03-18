@@ -234,12 +234,11 @@ program
 program
   .command('story')
   .description('Decompose a planning spec into atomic GitHub issues')
-  .requiredOption('--file <path>', 'Path to planning spec / PRD file')
-  .action(async (options) => {
+  .action(async () => {
     await config.load();
     logger.setVerbose(config.get().verbose || false);
     const storyCommand = new StoryCommand(logger, config, state, git, github, guard, projectRoot);
-    await storyCommand.execute(options);
+    await storyCommand.execute();
   });
 
 program.parse();

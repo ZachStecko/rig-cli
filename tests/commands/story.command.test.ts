@@ -8,16 +8,10 @@ import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
 import { LLMService } from '../../src/services/llm.service.js';
 import * as readline from 'readline';
-import * as fs from 'fs/promises';
 
 // Mock readline module
 vi.mock('readline', () => ({
   createInterface: vi.fn(),
-}));
-
-// Mock fs/promises
-vi.mock('fs/promises', () => ({
-  readFile: vi.fn(),
 }));
 
 describe('StoryCommand', () => {
@@ -97,89 +91,122 @@ describe('StoryCommand', () => {
     vi.restoreAllMocks();
   });
 
-  function mockConfirm(responses: string[]) {
-    let callIndex = 0;
-    const mockRL = {
-      on: vi.fn().mockReturnThis(),
-      close: vi.fn(),
-      question: vi.fn((question: string, callback: (answer: string) => void) => {
-        callback(responses[callIndex++] || 'n');
-      }),
+  /**
+   * Creates a mock readline interface that provides multiline input
+   * then handles confirm prompts via question().
+   */
+  function mockReadline(specContent: string, confirmResponses: string[]) {
+    let confirmIndex = 0;
+    let lineCallback: ((line: string) => void) | null = null;
+    let closeCallback: (() => void) | null = null;
+    let isFirstInterface = true;
+
+    const createMockRL = () => {
+      if (isFirstInterface) {
+        // First createInterface call is for promptMultiline
+        isFirstInterface = false;
+        const mockRL: any = {
+          on: vi.fn((event: string, callback: any) => {
+            if (event === 'line') {
+              lineCallback = callback;
+            }
+            if (event === 'close') {
+              closeCallback = callback;
+            }
+            // Simulate lines then close
+            if (lineCallback && closeCallback && event === 'close') {
+              if (specContent) {
+                for (const line of specContent.split('\n')) {
+                  lineCallback(line);
+                }
+              }
+              closeCallback();
+            }
+            return mockRL;
+          }),
+          close: vi.fn(),
+          question: vi.fn(),
+        };
+        return mockRL;
+      } else {
+        // Subsequent createInterface calls are for confirm()
+        const mockRL: any = {
+          on: vi.fn().mockReturnThis(),
+          close: vi.fn(),
+          question: vi.fn((question: string, callback: (answer: string) => void) => {
+            callback(confirmResponses[confirmIndex++] || 'n');
+          }),
+        };
+        return mockRL;
+      }
     };
-    vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
+
+    vi.mocked(readline.createInterface).mockImplementation(createMockRL as any);
     vi.spyOn(process, 'once').mockImplementation(() => process as any);
     vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-    return mockRL;
   }
 
   describe('execute', () => {
     it('checks GitHub authentication before proceeding', async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
-      mockConfirm([]);
+      mockReadline('', []);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockGuard.requireGhAuth).toHaveBeenCalled();
     });
 
-    it('errors when spec file cannot be read', async () => {
-      vi.mocked(fs.readFile).mockRejectedValue(new Error('ENOENT'));
-      mockConfirm([]);
+    it('warns when no spec content is provided', async () => {
+      mockReadline('', []);
 
-      await command.execute({ file: 'nonexistent.md' });
+      await command.execute();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Could not read spec file'));
+      expect(mockLogger.warn).toHaveBeenCalledWith('No spec content provided. Aborting.');
     });
 
-    it('errors when spec file is empty', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('   ');
-      mockConfirm([]);
+    it('warns when spec content is only whitespace', async () => {
+      mockReadline('   ', []);
 
-      await command.execute({ file: 'empty.md' });
+      await command.execute();
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Spec file is empty.');
+      expect(mockLogger.warn).toHaveBeenCalledWith('No spec content provided. Aborting.');
     });
 
     it('errors when LLM is not available', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# My Planning Spec\nSome content');
-      mockConfirm([]);
+      mockReadline('# My Planning Spec\nSome content', []);
       mockLLMService.isAvailable.mockResolvedValue(false);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.error).toHaveBeenCalledWith('Agent is not available. Check your .rig.yml provider setting and authentication.');
     });
 
     it('handles LLM structuring failure gracefully', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# My Planning Spec');
-      mockConfirm([]);
+      mockReadline('# My Planning Spec', []);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockRejectedValue(new Error('LLM API error'));
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to structure story: LLM API error');
       expect(mockGitHub.createIssue).not.toHaveBeenCalled();
     });
 
     it('cancels when user declines parent story creation', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# My Planning Spec\nContent here');
-      mockConfirm(['n']);
+      mockReadline('# My Planning Spec\nContent here', ['n']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'cli: Add story decomposition',
         body: 'Decompose planning specs.',
       });
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.warn).toHaveBeenCalledWith('Story creation cancelled.');
       expect(mockGitHub.createIssue).not.toHaveBeenCalled();
     });
 
     it('creates parent issue with story and rig-created labels', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# My Planning Spec\nContent here');
-      mockConfirm(['y', 'y']);
+      mockReadline('# My Planning Spec\nContent here', ['y', 'y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'cli: Add story decomposition',
@@ -192,7 +219,7 @@ describe('StoryCommand', () => {
         .mockResolvedValueOnce(10)
         .mockResolvedValueOnce(11);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       const parentCall = vi.mocked(mockGitHub.createIssue).mock.calls[0][0];
       expect(parentCall.labels).toContain('story');
@@ -200,8 +227,7 @@ describe('StoryCommand', () => {
     });
 
     it('creates child issues with rig-created label', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y', 'y']);
+      mockReadline('# Spec', ['y', 'y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent title',
@@ -216,7 +242,7 @@ describe('StoryCommand', () => {
         .mockResolvedValueOnce(11)
         .mockResolvedValueOnce(12);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockGitHub.createIssue).toHaveBeenCalledTimes(3);
 
@@ -232,8 +258,7 @@ describe('StoryCommand', () => {
 
     it('passes spec content to structureIssue and decomposeStory', async () => {
       const specContent = '# My Feature Spec\n\nDetailed requirements here.';
-      vi.mocked(fs.readFile).mockResolvedValue(specContent);
-      mockConfirm(['y', 'y']);
+      mockReadline(specContent, ['y', 'y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent title',
@@ -246,15 +271,14 @@ describe('StoryCommand', () => {
         .mockResolvedValueOnce(5)
         .mockResolvedValueOnce(6);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLLMService.structureIssue).toHaveBeenCalledWith(specContent);
       expect(mockLLMService.decomposeStory).toHaveBeenCalledWith(specContent, 5);
     });
 
     it('cancels when user declines child issue creation', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y', 'n']);
+      mockReadline('# Spec', ['y', 'n']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent title',
@@ -265,7 +289,7 @@ describe('StoryCommand', () => {
         { title: 'Child 1', body: 'Parent story: #10\n\nWork.', labels: [] },
       ]);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.warn).toHaveBeenCalledWith('Child issue creation cancelled.');
       // Parent was created but no children
@@ -273,8 +297,7 @@ describe('StoryCommand', () => {
     });
 
     it('handles decomposition failure gracefully', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y']);
+      mockReadline('# Spec', ['y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent title',
@@ -283,14 +306,13 @@ describe('StoryCommand', () => {
       vi.mocked(mockGitHub.createIssue).mockResolvedValueOnce(10);
       mockLLMService.decomposeStory.mockRejectedValue(new Error('Decomposition failed'));
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to decompose story: Decomposition failed');
     });
 
     it('handles parent issue creation failure gracefully', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y']);
+      mockReadline('# Spec', ['y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent title',
@@ -298,14 +320,13 @@ describe('StoryCommand', () => {
       });
       vi.mocked(mockGitHub.createIssue).mockRejectedValue(new Error('GitHub API error'));
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to create parent story: GitHub API error');
     });
 
     it('logs summary with parent and child URLs', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y', 'y']);
+      mockReadline('# Spec', ['y', 'y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent',
@@ -321,7 +342,7 @@ describe('StoryCommand', () => {
         .mockResolvedValueOnce(12);
       vi.mocked(mockGitHub.repoName).mockResolvedValue('owner/repo');
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(consoleLogSpy).toHaveBeenCalledWith('  Parent: https://github.com/owner/repo/issues/10');
       expect(consoleLogSpy).toHaveBeenCalledWith('  Child:  https://github.com/owner/repo/issues/11');
@@ -347,8 +368,7 @@ describe('StoryCommand', () => {
         '/test/project'
       );
 
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y', 'y']);
+      mockReadline('# Spec', ['y', 'y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent',
@@ -361,7 +381,7 @@ describe('StoryCommand', () => {
         .mockResolvedValueOnce(10)
         .mockResolvedValueOnce(11);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       const parentCall = vi.mocked(mockGitHub.createIssue).mock.calls[0][0];
       expect(parentCall.labels).toContain('P1');
@@ -373,8 +393,7 @@ describe('StoryCommand', () => {
     });
 
     it('handles child issue creation failure without stopping other children', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y', 'y']);
+      mockReadline('# Spec', ['y', 'y']);
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent',
@@ -391,15 +410,14 @@ describe('StoryCommand', () => {
         .mockRejectedValueOnce(new Error('Rate limited'))  // child 2 fails
         .mockResolvedValueOnce(13); // child 3
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Failed to create child issue "Child 2"'));
       expect(mockLogger.success).toHaveBeenCalledWith('Created 2 child issues for story #10');
     });
 
     it('displays child issue titles in preview', async () => {
-      vi.mocked(fs.readFile).mockResolvedValue('# Spec');
-      mockConfirm(['y', 'n']); // confirm parent, decline children
+      mockReadline('# Spec', ['y', 'n']); // confirm parent, decline children
       mockLLMService.isAvailable.mockResolvedValue(true);
       mockLLMService.structureIssue.mockResolvedValue({
         title: 'Parent',
@@ -411,7 +429,7 @@ describe('StoryCommand', () => {
         { title: 'cli: Add decomposeStory', body: 'Work.', labels: [] },
       ]);
 
-      await command.execute({ file: 'spec.md' });
+      await command.execute();
 
       expect(consoleLogSpy).toHaveBeenCalledWith('  - cli: Add story label');
       expect(consoleLogSpy).toHaveBeenCalledWith('  - cli: Add decomposeStory');
