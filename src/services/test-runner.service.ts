@@ -745,7 +745,7 @@ export class TestRunnerService {
    */
   private async ensureDockerRunning(): Promise<boolean> {
     // Check if Docker is already running
-    const checkResult = await exec('docker ps 2>&1');
+    const checkResult = await exec('docker ps 2>&1', { timeout: 10000 });
     if (checkResult.exitCode === 0) {
       return true;
     }
@@ -783,7 +783,7 @@ export class TestRunnerService {
 
     if (platform === 'darwin') {
       // macOS - use open command
-      const result = await exec('open -a Docker 2>&1');
+      const result = await exec('open -a Docker 2>&1', { timeout: 10000 });
       return result.exitCode === 0;
     } else if (platform === 'win32') {
       // Windows - try to start Docker Desktop
@@ -816,7 +816,7 @@ export class TestRunnerService {
     const timeoutMs = timeoutSeconds * 1000;
 
     while (Date.now() - startTime < timeoutMs) {
-      const result = await exec('docker ps 2>&1');
+      const result = await exec('docker ps 2>&1', { timeout: 5000 });
       if (result.exitCode === 0) {
         return true;
       }
