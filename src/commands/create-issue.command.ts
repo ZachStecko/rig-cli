@@ -119,6 +119,14 @@ export class CreateIssueCommand extends BaseCommand {
         this.logger.info(`Labels: ${allLabels.join(', ')}`);
       }
 
+      // Ensure all labels exist in the repo before creating the issue
+      if (allLabels.length > 0) {
+        const createdLabels = await this.github.ensureLabels(allLabels);
+        if (createdLabels.length > 0) {
+          this.logger.info(`Created missing labels: ${createdLabels.join(', ')}`);
+        }
+      }
+
       this.logger.command('gh issue create');
       const issueNumber = await this.github.createIssue({
         title: structured.title,
