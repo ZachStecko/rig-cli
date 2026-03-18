@@ -312,18 +312,38 @@ export class PrCommand extends BaseCommand {
     this.logger.info('Feedback received. Processing...');
     console.log('');
 
+    // Fetch existing review comments with code context
+    this.logger.step(1, 5, 'Fetching PR review comments...');
+    let reviewComments: Array<{
+      id: number;
+      body: string;
+      path: string;
+      line?: number;
+      start_line?: number;
+      diff_hunk: string;
+      user: { login: string };
+    }> = [];
+    try {
+      reviewComments = await this.github.listPrReviewComments(prNumber);
+      this.logger.info(`Found ${reviewComments.length} review comment(s) with code context`);
+    } catch (error) {
+      this.logger.warn(`Could not fetch review comments: ${(error as Error).message}`);
+      reviewComments = [];
+    }
+    console.log('');
+
     // Post feedback as GitHub comment and get the comment ID
-    this.logger.step(1, 4, 'Posting feedback to GitHub PR...');
+    this.logger.step(2, 5, 'Posting feedback to GitHub PR...');
     const userCommentId = await this.github.prComment(prNumber, userFeedback);
     console.log('');
 
-    // Build prompt for agent
-    this.logger.step(2, 4, 'Preparing fix prompt for agent...');
-    const fixPrompt = await this.promptBuilder.assemblePrFixPrompt(userFeedback, prNumber);
+    // Build prompt for agent with review comment context
+    this.logger.step(3, 5, 'Preparing fix prompt for agent...');
+    const fixPrompt = await this.promptBuilder.assemblePrFixPrompt(userFeedback, prNumber, reviewComments);
     console.log('');
 
     // Run Claude agent
-    this.logger.step(3, 4, 'Running Claude agent to address feedback...');
+    this.logger.step(4, 5, 'Running Claude agent to address feedback...');
 
     // Get config for permission mode
     const configData = this.config.get();
@@ -359,7 +379,7 @@ export class PrCommand extends BaseCommand {
     console.log('');
 
     // Push changes
-    this.logger.step(4, 4, 'Pushing changes to remote...');
+    this.logger.step(5, 5, 'Pushing changes to remote...');
     await this.git.push();
     console.log('');
 

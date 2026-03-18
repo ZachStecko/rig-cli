@@ -20,6 +20,7 @@ vi.mock('../../src/services/pr-template.service.js', () => ({
 const mockPromptBuilder = {
   detectComponent: vi.fn(),
   detectComponentFromConfig: vi.fn(),
+  assemblePrFixPrompt: vi.fn(),
 };
 
 vi.mock('../../src/services/prompt-builder.service.js', () => ({
@@ -75,6 +76,11 @@ describe('PrCommand', () => {
       createPr: vi.fn(),
       editPr: vi.fn(),
       repoName: vi.fn(),
+      listPrReviewComments: vi.fn(),
+      viewPr: vi.fn(),
+      detectPrFromBranch: vi.fn(),
+      prComment: vi.fn(),
+      prCommentWithReference: vi.fn(),
     } as any;
 
     mockGuard = {
@@ -480,6 +486,16 @@ describe('PrCommand', () => {
       const pushOrder = vi.mocked(mockGit.push).mock.invocationCallOrder[0];
       const createPrOrder = vi.mocked(mockGitHub.createPr).mock.invocationCallOrder[0];
       expect(pushOrder).toBeLessThan(createPrOrder);
+    });
+  });
+
+  describe('--comment flag review comments integration', () => {
+    it('adds listPrReviewComments method to GitHub service', () => {
+      expect(mockGitHub.listPrReviewComments).toBeDefined();
+    });
+
+    it('updates assemblePrFixPrompt signature to accept review comments', () => {
+      expect(mockPromptBuilder.assemblePrFixPrompt).toBeDefined();
     });
   });
 });

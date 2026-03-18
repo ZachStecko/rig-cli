@@ -211,11 +211,58 @@ When fixed, all tests should pass and the build should succeed.
    *
    * @param userFeedback - User's feedback/comments on the PR
    * @param prNumber - PR number being addressed
+   * @param reviewComments - Optional array of review comments with file context
    * @returns Rendered fix prompt
    */
-  async assemblePrFixPrompt(userFeedback: string, prNumber: number): Promise<string> {
+  async assemblePrFixPrompt(
+    userFeedback: string,
+    prNumber: number,
+    reviewComments?: Array<{
+      id: number;
+      body: string;
+      path: string;
+      line?: number;
+      start_line?: number;
+      diff_hunk: string;
+      user: { login: string };
+    }>
+  ): Promise<string> {
     // Fetch PR data for context
     const prData = await this.github.viewPr(prNumber);
+
+    let reviewCommentsSection = '';
+    if (reviewComments && reviewComments.length > 0) {
+      const commentBlocks = reviewComments.map((comment, index) => {
+        const lineInfo = comment.start_line
+          ? `Lines ${comment.start_line}-${comment.line || comment.start_line}`
+          : comment.line
+          ? `Line ${comment.line}`
+          : 'General comment';
+
+        return `### Review Comment ${index + 1}
+
+**File:** \`${comment.path}\`
+**Location:** ${lineInfo}
+**Reviewer:** @${comment.user.login}
+
+**Comment:**
+${comment.body}
+
+**Code Context:**
+\`\`\`
+${comment.diff_hunk}
+\`\`\`
+`;
+      }).join('\n');
+
+      reviewCommentsSection = `
+
+## Review Comments with Code Context
+
+The following review comments include specific file locations and code snippets:
+
+${commentBlocks}`;
+    }
 
     const prompt = `# Address PR Feedback
 
@@ -225,21 +272,22 @@ The user has reviewed the PR and provided the following feedback:
 
 \`\`\`
 ${userFeedback}
-\`\`\`
+\`\`\`${reviewCommentsSection}
 
 ## Your Task
 
-Address all the feedback provided by the user:
+Address all the feedback provided by the user. Pay special attention to the specific files, lines, and code context mentioned in the review comments.
 
-1. **Understand the feedback** - Read through all the user's concerns and requests
-2. **Locate the relevant code** - Find the files and sections that need changes
-3. **Make the requested changes** - Implement the fixes, improvements, or adjustments
+1. **Understand the feedback** - Read through all the user's concerns and requests, noting the specific files and lines mentioned
+2. **Locate the relevant code** - Use the file paths and line numbers provided to find exact sections that need changes
+3. **Make the requested changes** - Implement the fixes, improvements, or adjustments addressing each specific concern
 4. **Test your changes** - Ensure everything works correctly
 5. **Commit your work** - Create clear, descriptive commits for your changes
 
 ## Guidelines
 
-- Address every point raised in the feedback
+- Address every point raised in the feedback, referencing specific files and concerns
+- When responding to a code-specific comment, ensure your fix targets the exact file and location mentioned
 - If feedback is ambiguous, make reasonable assumptions and document them in commit messages
 - Maintain code quality and consistency with the existing codebase
 - Don't make unrelated changes beyond what was requested
@@ -247,7 +295,7 @@ Address all the feedback provided by the user:
 
 ## Completion
 
-When done, all requested changes should be implemented and the PR should be ready for the user to review again.
+When done, all requested changes should be implemented and the PR should be ready for the user to review again. Your response should reference the specific files and concerns you've addressed.
 `;
 
     return prompt;

@@ -16,6 +16,7 @@ describe('PromptBuilderService', () => {
     mockGitHub = {
       viewIssue: vi.fn(),
       issueLabels: vi.fn(),
+      viewPr: vi.fn(),
     } as any;
 
     mockGit = {
@@ -483,6 +484,148 @@ lib/parser.js
       const result = await promptBuilder.assembleReviewPrompt(42);
 
       expect(result).toBe('Rendered review prompt');
+    });
+  });
+
+  describe('assemblePrFixPrompt', () => {
+    beforeEach(() => {
+      vi.mocked(mockGitHub.viewPr).mockResolvedValue({
+        number: 123,
+        title: 'Fix authentication bug',
+        body: 'Fixes issue with login',
+        headRefName: 'issue-42-fix-auth'
+      });
+    });
+
+    it('builds basic fix prompt without review comments', async () => {
+      const prompt = await promptBuilder.assemblePrFixPrompt('Please add error handling', 123);
+
+      expect(prompt).toContain('# Address PR Feedback');
+      expect(prompt).toContain('PR #123: Fix authentication bug');
+      expect(prompt).toContain('Please add error handling');
+      expect(mockGitHub.viewPr).toHaveBeenCalledWith(123);
+    });
+
+    it('includes review comments with code context when provided', async () => {
+      const reviewComments = [
+        {
+          id: 1001,
+          body: 'This needs error handling',
+          path: 'src/auth.ts',
+          line: 42,
+          diff_hunk: '@@ -40,3 +40,5 @@\n function login() {\n+  return user;\n }',
+          user: { login: 'reviewer1' }
+        },
+        {
+          id: 1002,
+          body: 'Add validation here',
+          path: 'src/validators.ts',
+          start_line: 10,
+          line: 15,
+          diff_hunk: '@@ -8,6 +8,8 @@\n function validate() {\n+  // code\n }',
+          user: { login: 'reviewer2' }
+        }
+      ];
+
+      const prompt = await promptBuilder.assemblePrFixPrompt(
+        'Address all review comments',
+        123,
+        reviewComments
+      );
+
+      expect(prompt).toContain('## Review Comments with Code Context');
+      expect(prompt).toContain('### Review Comment 1');
+      expect(prompt).toContain('**File:** `src/auth.ts`');
+      expect(prompt).toContain('**Location:** Line 42');
+      expect(prompt).toContain('This needs error handling');
+      expect(prompt).toContain('@@ -40,3 +40,5 @@');
+      expect(prompt).toContain('**Reviewer:** @reviewer1');
+
+      expect(prompt).toContain('### Review Comment 2');
+      expect(prompt).toContain('**File:** `src/validators.ts`');
+      expect(prompt).toContain('**Location:** Lines 10-15');
+      expect(prompt).toContain('Add validation here');
+      expect(prompt).toContain('**Reviewer:** @reviewer2');
+    });
+
+    it('handles review comment with single line', async () => {
+      const reviewComments = [
+        {
+          id: 1001,
+          body: 'Fix this typo',
+          path: 'README.md',
+          line: 5,
+          diff_hunk: '@@ -3,2 +3,3 @@\n # README\n+Text here',
+          user: { login: 'reviewer' }
+        }
+      ];
+
+      const prompt = await promptBuilder.assemblePrFixPrompt(
+        'Fix typo',
+        123,
+        reviewComments
+      );
+
+      expect(prompt).toContain('**Location:** Line 5');
+      expect(prompt).not.toContain('Lines');
+    });
+
+    it('handles review comment with line range', async () => {
+      const reviewComments = [
+        {
+          id: 1001,
+          body: 'Refactor this section',
+          path: 'src/service.ts',
+          start_line: 20,
+          line: 30,
+          diff_hunk: '@@ -18,12 +18,15 @@\n code here',
+          user: { login: 'reviewer' }
+        }
+      ];
+
+      const prompt = await promptBuilder.assemblePrFixPrompt(
+        'Refactor code',
+        123,
+        reviewComments
+      );
+
+      expect(prompt).toContain('**Location:** Lines 20-30');
+    });
+
+    it('works with empty review comments array', async () => {
+      const prompt = await promptBuilder.assemblePrFixPrompt(
+        'General feedback',
+        123,
+        []
+      );
+
+      expect(prompt).toContain('# Address PR Feedback');
+      expect(prompt).toContain('General feedback');
+      expect(prompt).not.toContain('## Review Comments with Code Context');
+    });
+
+    it('includes instructions to reference specific files and concerns', async () => {
+      const reviewComments = [
+        {
+          id: 1001,
+          body: 'Fix error handling',
+          path: 'src/handler.ts',
+          line: 15,
+          diff_hunk: '@@ diff',
+          user: { login: 'reviewer' }
+        }
+      ];
+
+      const prompt = await promptBuilder.assemblePrFixPrompt(
+        'Fix issues',
+        123,
+        reviewComments
+      );
+
+      expect(prompt).toContain('Pay special attention to the specific files, lines, and code context');
+      expect(prompt).toContain('Use the file paths and line numbers provided to find exact sections');
+      expect(prompt).toContain('ensure your fix targets the exact file and location mentioned');
+      expect(prompt).toContain('Your response should reference the specific files and concerns');
     });
   });
 });

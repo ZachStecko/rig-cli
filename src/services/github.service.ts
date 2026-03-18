@@ -446,6 +446,45 @@ export class GitHubService {
   }
 
   /**
+   * Fetches PR review comments with file context and code snippets.
+   * Returns review comments (not general PR comments) which include file path,
+   * line numbers, and diff hunks for context.
+   *
+   * @param prNumber - PR number
+   * @returns Array of review comments with file context
+   * @throws Error if PR doesn't exist or gh command fails
+   */
+  async listPrReviewComments(prNumber: number): Promise<Array<{
+    id: number;
+    body: string;
+    path: string;
+    line?: number;
+    start_line?: number;
+    original_line?: number;
+    original_start_line?: number;
+    diff_hunk: string;
+    user: {
+      login: string;
+    };
+  }>> {
+    const repoName = await this.repoName();
+    const [owner, repo] = repoName.split('/');
+
+    const result = await this.gh(
+      `api repos/${owner}/${repo}/pulls/${prNumber}/comments --jq '.[] | {id, body, path, line, start_line, original_line, original_start_line, diff_hunk, user: {login: .user.login}}'`
+    );
+
+    try {
+      const lines = result.stdout.trim().split('\n').filter(line => line.length > 0);
+      return lines.map(line => JSON.parse(line));
+    } catch (error) {
+      throw new Error(
+        `Failed to parse GitHub API review comments: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Adds a comment to a pull request mentioning a previous comment.
    *
    * @param prNumber - PR number

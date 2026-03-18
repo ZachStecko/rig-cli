@@ -38,3 +38,21 @@ export type TriageDecision = 'fix' | 'skip';
 export interface TriagedFinding extends ReviewFinding {
   decision: TriageDecision;
 }
+
+/**
+ * A single PR review comment from GitHub.
+ * Contains the comment body, file context, and code snippet.
+ */
+export interface PrReviewComment {
+  id: number;
+  body: string;
+  path: string;
+  line?: number;
+  start_line?: number;
+  original_line?: number;
+  original_start_line?: number;
+  diff_hunk: string;
+  user: {
+    login: string;
+  };
+}

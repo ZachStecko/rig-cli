@@ -729,6 +729,88 @@ describe('GitHubService', () => {
     });
   });
 
+  describe('listPrReviewComments', () => {
+    it('fetches review comments with code context', async () => {
+      // First call: repoName() fetches owner/repo
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo\n',
+        stderr: '',
+        exitCode: 0,
+      });
+      // Second call: gh api to fetch review comments
+      const comment1 = {
+        id: 1001,
+        body: 'This needs error handling',
+        path: 'src/auth.ts',
+        line: 42,
+        diff_hunk: '@@ -40,3 +40,5 @@\n function login() {\n+  return user;\n }',
+        user: { login: 'reviewer1' }
+      };
+      const comment2 = {
+        id: 1002,
+        body: 'Add validation here',
+        path: 'src/validators.ts',
+        start_line: 10,
+        line: 15,
+        diff_hunk: '@@ -8,6 +8,8 @@\n function validate() {\n+  // code\n }',
+        user: { login: 'reviewer2' }
+      };
+      mockExec.mockResolvedValueOnce({
+        stdout: JSON.stringify(comment1) + '\n' + JSON.stringify(comment2) + '\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const comments = await githubService.listPrReviewComments(123);
+
+      expect(comments).toHaveLength(2);
+      expect(comments[0]).toEqual(comment1);
+      expect(comments[1]).toEqual(comment2);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('gh api repos/owner/repo/pulls/123/comments'),
+        { cwd: projectRoot }
+      );
+    });
+
+    it('returns empty array when no review comments exist', async () => {
+      // First call: repoName()
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo\n',
+        stderr: '',
+        exitCode: 0,
+      });
+      // Second call: gh api returns empty result
+      mockExec.mockResolvedValueOnce({
+        stdout: '',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const comments = await githubService.listPrReviewComments(123);
+
+      expect(comments).toEqual([]);
+    });
+
+    it('throws when JSON parsing fails', async () => {
+      // First call: repoName()
+      mockExec.mockResolvedValueOnce({
+        stdout: 'owner/repo\n',
+        stderr: '',
+        exitCode: 0,
+      });
+      // Second call: gh api returns invalid JSON
+      mockExec.mockResolvedValueOnce({
+        stdout: 'invalid json{',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      await expect(githubService.listPrReviewComments(123)).rejects.toThrow(
+        'Failed to parse GitHub API review comments'
+      );
+    });
+  });
+
   describe('listLabels', () => {
     it('returns label names from repository', async () => {
       mockExec.mockResolvedValue({
