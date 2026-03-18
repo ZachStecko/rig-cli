@@ -175,7 +175,8 @@ export class GitService {
    */
   async commitAll(message: string): Promise<void> {
     await this.git('add -A');
-    await this.git(`commit -m ${JSON.stringify(message)}`);
+    const escaped = message.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+    await this.git(`commit -m ${JSON.stringify(escaped)}`);
   }
 
   /**
@@ -209,7 +210,7 @@ export class GitService {
    * @throws Error if git command fails
    */
   async diffStatVsMaster(): Promise<string> {
-    const master = await this.getMasterBranchName();
+    const master = await this.getBaseBranchName();
     const result = await this.git(`diff --stat ${master}...HEAD`);
     return result.stdout.trim();
   }
@@ -222,7 +223,7 @@ export class GitService {
    * @throws Error if git command fails
    */
   async newFilesVsMaster(): Promise<string[]> {
-    const master = await this.getMasterBranchName();
+    const master = await this.getBaseBranchName();
     const result = await this.git(`diff --name-only --diff-filter=A ${master}...HEAD`);
 
     const files = result.stdout
@@ -240,7 +241,7 @@ export class GitService {
    * @throws Error if git command fails or returns invalid output
    */
   async commitCountVsMaster(): Promise<number> {
-    const master = await this.getMasterBranchName();
+    const master = await this.getBaseBranchName();
     const result = await this.git(`rev-list --count ${master}..HEAD`);
     const count = parseInt(result.stdout.trim(), 10);
 
@@ -259,7 +260,7 @@ export class GitService {
    * @throws Error if git command fails
    */
   async logVsMaster(): Promise<string> {
-    const master = await this.getMasterBranchName();
+    const master = await this.getBaseBranchName();
     const result = await this.git(`log ${master}..HEAD --oneline`);
     return result.stdout.trim();
   }
@@ -272,7 +273,7 @@ export class GitService {
    * @throws Error if git command fails
    */
   async changedFilesCountVsMaster(): Promise<number> {
-    const master = await this.getMasterBranchName();
+    const master = await this.getBaseBranchName();
     const result = await this.git(`diff --name-only ${master}...HEAD`);
 
     const files = result.stdout
@@ -291,7 +292,7 @@ export class GitService {
    * @throws Error if git command fails or output is unparseable
    */
   async diffLinesVsMaster(): Promise<number> {
-    const master = await this.getMasterBranchName();
+    const master = await this.getBaseBranchName();
     const result = await this.git(`diff --stat ${master}...HEAD`);
 
     // Parse the summary line (last line) which looks like:
@@ -329,11 +330,10 @@ export class GitService {
    * Gets the name of the base branch.
    * Returns the configured baseBranch if set, otherwise auto-detects main or master.
    *
-   * @private
    * @returns The base branch name
    * @throws Error if no base branch can be determined
    */
-  private async getMasterBranchName(): Promise<string> {
+  async getBaseBranchName(): Promise<string> {
     if (this.baseBranch) {
       return this.baseBranch;
     }

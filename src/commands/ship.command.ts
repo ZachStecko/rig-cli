@@ -148,6 +148,10 @@ export class ShipCommand extends BaseCommand {
       await this.runPipeline('pick');
     }
 
+    // Close the issue explicitly (Closes #N in PR body only works for default branch)
+    const finalState = await this.state.read();
+    await this.github.closeIssue(finalState.issue_number);
+
     console.log('');
     this.logger.success('Pipeline complete!');
     this.logger.info('Issue has been implemented, tested, and submitted for review.');

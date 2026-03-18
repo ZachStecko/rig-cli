@@ -22,6 +22,7 @@ describe('PromptBuilderService', () => {
       currentBranch: vi.fn(),
       diffLinesVsMaster: vi.fn(),
       changedFilesCountVsMaster: vi.fn(),
+      getBaseBranchName: vi.fn().mockResolvedValue('main'),
     } as any;
 
     mockTemplateEngine = {
@@ -441,8 +442,22 @@ lib/parser.js
           intent: 'Implement: Add user authentication',
           lenses: expect.any(String),
           review_size: expect.any(String),
-          default_branch: 'master',
+          default_branch: 'main',
           review_file_path: expect.stringContaining('.rig-reviews/issue-42/'),
+        })
+      );
+    });
+
+    it('auto-detects base branch when no defaultBranch option provided', async () => {
+      vi.mocked(mockGit.getBaseBranchName).mockResolvedValue('develop');
+
+      await promptBuilder.assembleReviewPrompt(42);
+
+      expect(mockGit.getBaseBranchName).toHaveBeenCalled();
+      expect(mockTemplateEngine.render).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          default_branch: 'develop',
         })
       );
     });
