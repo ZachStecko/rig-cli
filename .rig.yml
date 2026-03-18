@@ -1,5 +1,5 @@
 agent:
-  provider: sdk
+  provider: binary
   max_turns: 80
   permission_mode: bypassPermissions
   timeout: 500

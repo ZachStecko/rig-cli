@@ -12,6 +12,7 @@ import { exec } from 'child_process';
 import * as readline from 'readline';
 import { stringify as stringifyYaml } from 'yaml';
 import { getLabelDetails } from '../types/labels.types.js';
+import { detectPackageManager, getInstallCommand } from '../utils/package-manager.js';
 
 const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
@@ -140,13 +141,19 @@ export class BootstrapCommand extends BaseCommand {
     this.logger.step(step, totalSteps, 'Setting up frontend test infrastructure...');
     console.log('');
 
+    // Detect package manager
+    const pm = await detectPackageManager(frontendPath);
+    this.logger.dim(`Detected package manager: ${pm}`);
+
     // Step 1: Install dependencies
     this.logger.info('Installing frontend test dependencies...');
     try {
-      await execAsync(
-        'npm install --save-dev vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom msw @vitest/coverage-v8',
-        { cwd: frontendPath }
+      const installCmd = getInstallCommand(
+        pm,
+        'vitest @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom msw @vitest/coverage-v8',
+        true
       );
+      await execAsync(installCmd, { cwd: frontendPath });
       this.logger.success('Frontend test dependencies installed');
     } catch (error) {
       this.logger.warn('Failed to install dependencies (may already be installed)');
@@ -241,14 +248,20 @@ export class BootstrapCommand extends BaseCommand {
    * @param backendPath - Path to backend directory
    */
   private async bootstrapBackendTypeScript(backendPath: string): Promise<void> {
+    // Detect package manager
+    const pm = await detectPackageManager(backendPath);
+    this.logger.dim(`Detected package manager: ${pm}`);
+
     // Install backend testing dependencies
     this.logger.info('Installing backend test dependencies...');
     this.logger.dim('Note: Tests will require Docker to be running for testcontainers');
     try {
-      await execAsync(
-        'npm install --save-dev vitest @vitest/ui testcontainers @testcontainers/postgresql pg @types/pg',
-        { cwd: backendPath }
+      const installCmd = getInstallCommand(
+        pm,
+        'vitest @vitest/ui testcontainers @testcontainers/postgresql pg @types/pg',
+        true
       );
+      await execAsync(installCmd, { cwd: backendPath });
       this.logger.success('Backend test dependencies installed');
     } catch (error) {
       this.logger.warn('Failed to install dependencies (may already be installed)');
@@ -550,12 +563,17 @@ describe('Database Tests', () => {
       }
     }
 
+    // Detect package manager
+    const pm = await detectPackageManager(nodePath);
+    this.logger.dim(`Detected package manager: ${pm}`);
+
     // Install vitest if not already present
     const devDeps = packageJson.devDependencies || {};
     if (!devDeps.vitest) {
       this.logger.info('Installing vitest...');
       try {
-        await execAsync('npm install --save-dev vitest @vitest/coverage-v8', { cwd: nodePath });
+        const installCmd = getInstallCommand(pm, 'vitest @vitest/coverage-v8', true);
+        await execAsync(installCmd, { cwd: nodePath });
         this.logger.success('Vitest installed');
       } catch (error) {
         this.logger.warn('Failed to install vitest (may already be installed)');
