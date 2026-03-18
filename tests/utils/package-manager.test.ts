@@ -45,6 +45,12 @@ describe('detectPackageManager', () => {
     expect(await detectPackageManager(TMP)).toBe('yarn');
   });
 
+  it('detects bun from bun.lockb', async () => {
+    await ensureDir(TMP);
+    await writeFile(join(TMP, 'bun.lockb'), '');
+    expect(await detectPackageManager(TMP)).toBe('bun');
+  });
+
   it('defaults to npm when no lock files exist', async () => {
     await ensureDir(TMP);
     expect(await detectPackageManager(TMP)).toBe('npm');
@@ -74,6 +80,14 @@ describe('getInstallCommand', () => {
 
   it('returns production install for pnpm when dev is false', () => {
     expect(getInstallCommand('pnpm', 'express', false)).toBe('pnpm add express');
+  });
+
+  it('returns bun add command for bun', () => {
+    expect(getInstallCommand('bun', 'vitest', true)).toBe('bun add -d vitest');
+  });
+
+  it('returns production install for bun when dev is false', () => {
+    expect(getInstallCommand('bun', 'express', false)).toBe('bun add express');
   });
 
   it('handles multiple packages', () => {
@@ -106,5 +120,13 @@ describe('getRunCommand', () => {
 
   it('returns pnpm test for test script with pnpm', () => {
     expect(getRunCommand('pnpm', 'test')).toBe('pnpm test');
+  });
+
+  it('returns bun command for bun', () => {
+    expect(getRunCommand('bun', 'build')).toBe('bun build');
+  });
+
+  it('returns bun test for test script with bun', () => {
+    expect(getRunCommand('bun', 'test')).toBe('bun test');
   });
 });

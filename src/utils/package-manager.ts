@@ -4,7 +4,7 @@ import * as path from 'path';
 /**
  * Supported package managers.
  */
-export type PackageManager = 'npm' | 'yarn' | 'pnpm';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun';
 
 /**
  * Detects the package manager used in a project by checking for lock files.
@@ -12,8 +12,9 @@ export type PackageManager = 'npm' | 'yarn' | 'pnpm';
  * Detection order:
  * 1. yarn.lock -> yarn
  * 2. pnpm-lock.yaml -> pnpm
- * 3. package-lock.json -> npm
- * 4. default -> npm
+ * 3. bun.lockb -> bun
+ * 4. package-lock.json -> npm
+ * 5. default -> npm
  *
  * @param projectPath - Path to the project directory
  * @returns The detected package manager
@@ -21,6 +22,7 @@ export type PackageManager = 'npm' | 'yarn' | 'pnpm';
 export async function detectPackageManager(projectPath: string): Promise<PackageManager> {
   const pnpmLock = path.join(projectPath, 'pnpm-lock.yaml');
   const yarnLock = path.join(projectPath, 'yarn.lock');
+  const bunLock = path.join(projectPath, 'bun.lockb');
   const npmLock = path.join(projectPath, 'package-lock.json');
 
   if (await fileExists(yarnLock)) {
@@ -29,6 +31,10 @@ export async function detectPackageManager(projectPath: string): Promise<Package
 
   if (await fileExists(pnpmLock)) {
     return 'pnpm';
+  }
+
+  if (await fileExists(bunLock)) {
+    return 'bun';
   }
 
   if (await fileExists(npmLock)) {
@@ -52,6 +58,8 @@ export function getInstallCommand(pm: PackageManager, packages: string, dev = tr
       return dev ? `pnpm add -D ${packages}` : `pnpm add ${packages}`;
     case 'yarn':
       return dev ? `yarn add -D ${packages}` : `yarn add ${packages}`;
+    case 'bun':
+      return dev ? `bun add -d ${packages}` : `bun add ${packages}`;
     case 'npm':
     default:
       return dev ? `npm install --save-dev ${packages}` : `npm install ${packages}`;
@@ -71,6 +79,8 @@ export function getRunCommand(pm: PackageManager, script: string): string {
       return `pnpm ${script}`;
     case 'yarn':
       return `yarn ${script}`;
+    case 'bun':
+      return `bun ${script}`;
     case 'npm':
     default:
       return `npm ${script === 'test' ? 'test' : `run ${script}`}`;
