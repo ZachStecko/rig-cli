@@ -30,12 +30,12 @@ describe('detectPackageManager', () => {
     expect(await detectPackageManager(TMP)).toBe('npm');
   });
 
-  it('prefers pnpm when multiple lock files exist', async () => {
+  it('prefers yarn when multiple lock files exist', async () => {
     await ensureDir(TMP);
     await writeFile(join(TMP, 'pnpm-lock.yaml'), '');
     await writeFile(join(TMP, 'yarn.lock'), '');
     await writeFile(join(TMP, 'package-lock.json'), '');
-    expect(await detectPackageManager(TMP)).toBe('pnpm');
+    expect(await detectPackageManager(TMP)).toBe('yarn');
   });
 
   it('prefers yarn over npm when both exist', async () => {

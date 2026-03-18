@@ -10,8 +10,8 @@ export type PackageManager = 'npm' | 'yarn' | 'pnpm';
  * Detects the package manager used in a project by checking for lock files.
  *
  * Detection order:
- * 1. pnpm-lock.yaml -> pnpm
- * 2. yarn.lock -> yarn
+ * 1. yarn.lock -> yarn
+ * 2. pnpm-lock.yaml -> pnpm
  * 3. package-lock.json -> npm
  * 4. default -> npm
  *
@@ -23,12 +23,12 @@ export async function detectPackageManager(projectPath: string): Promise<Package
   const yarnLock = path.join(projectPath, 'yarn.lock');
   const npmLock = path.join(projectPath, 'package-lock.json');
 
-  if (await fileExists(pnpmLock)) {
-    return 'pnpm';
-  }
-
   if (await fileExists(yarnLock)) {
     return 'yarn';
+  }
+
+  if (await fileExists(pnpmLock)) {
+    return 'pnpm';
   }
 
   if (await fileExists(npmLock)) {
