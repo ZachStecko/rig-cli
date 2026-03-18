@@ -75,7 +75,7 @@ export class GitHubService {
     if (options.labels && options.labels.length > 0) {
       // Validate all labels to prevent command injection
       options.labels.forEach(label => this.validateLabel(label));
-      args.push('--label', options.labels.join(','));
+      args.push('--label', `"${options.labels.join(',')}"`);
     }
 
     if (options.assignee) {
@@ -244,7 +244,8 @@ export class GitHubService {
       if (options.labels && options.labels.length > 0) {
         // Validate all labels to prevent command injection
         options.labels.forEach(label => this.validateLabel(label));
-        args.push('--label', options.labels.join(','));
+        args.push('--label', `"${options.labels.join(',')}"`);
+
       }
 
       if (options.assignees && options.assignees.length > 0) {
