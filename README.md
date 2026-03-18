@@ -52,6 +52,9 @@ pr:
   draft: false
   reviewers: []            # ["username1", "username2"]
 
+git:
+  base_branch: main        # auto-detected if omitted (main or master)
+
 components:
   frontend:
     path: ./frontend
