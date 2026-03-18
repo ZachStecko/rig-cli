@@ -61,6 +61,13 @@ queue:
   default_phase: "Sprint 3"  # Only show Sprint 3 issues
 ```
 
+### Change Base Branch
+
+```yaml
+git:
+  base_branch: develop  # Use "develop" instead of auto-detected main/master
+```
+
 ### Auto-Assign Reviewers
 
 ```yaml

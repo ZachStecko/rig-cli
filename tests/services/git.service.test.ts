@@ -716,4 +716,165 @@ describe('GitService', () => {
       );
     });
   });
+
+  describe('configured baseBranch', () => {
+    let customGit: GitService;
+
+    beforeEach(() => {
+      customGit = new GitService(projectRoot, 'develop');
+      mockExec.mockClear();
+    });
+
+    it('isOnMaster returns true when on configured baseBranch', async () => {
+      mockExec.mockResolvedValue({
+        stdout: 'develop\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.isOnMaster();
+
+      expect(result).toBe(true);
+    });
+
+    it('isOnMaster returns false when on different branch with configured baseBranch', async () => {
+      mockExec.mockResolvedValue({
+        stdout: 'main\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.isOnMaster();
+
+      expect(result).toBe(false);
+    });
+
+    it('checkoutMaster checks out the configured baseBranch directly', async () => {
+      mockExec.mockResolvedValue({
+        stdout: "Switched to branch 'develop'\n",
+        stderr: '',
+        exitCode: 0,
+      });
+
+      await customGit.checkoutMaster();
+
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(`git -C "${projectRoot}" checkout develop`);
+    });
+
+    it('diffStatVsMaster uses configured baseBranch without auto-detection', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: ' src/index.ts | 10 +++++-----\n 1 file changed, 5 insertions(+), 5 deletions(-)\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.diffStatVsMaster();
+
+      expect(result).toContain('1 file changed');
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --stat develop...HEAD')
+      );
+    });
+
+    it('commitCountVsMaster uses configured baseBranch', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: '3\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.commitCountVsMaster();
+
+      expect(result).toBe(3);
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('rev-list --count develop..HEAD')
+      );
+    });
+
+    it('newFilesVsMaster uses configured baseBranch', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'src/new.ts\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.newFilesVsMaster();
+
+      expect(result).toEqual(['src/new.ts']);
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --name-only --diff-filter=A develop...HEAD')
+      );
+    });
+
+    it('logVsMaster uses configured baseBranch', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'abc123 Some commit\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.logVsMaster();
+
+      expect(result).toContain('Some commit');
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('log develop..HEAD --oneline')
+      );
+    });
+
+    it('changedFilesCountVsMaster uses configured baseBranch', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: 'src/a.ts\nsrc/b.ts\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.changedFilesCountVsMaster();
+
+      expect(result).toBe(2);
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --name-only develop...HEAD')
+      );
+    });
+
+    it('diffLinesVsMaster uses configured baseBranch', async () => {
+      mockExec.mockResolvedValueOnce({
+        stdout: ' src/file1.ts | 10 ++++++++++\n 1 file changed, 10 insertions(+)\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await customGit.diffLinesVsMaster();
+
+      expect(result).toBe(10);
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('diff --stat develop...HEAD')
+      );
+    });
+
+    it('setBaseBranch updates the base branch at runtime', async () => {
+      const dynamicGit = new GitService(projectRoot);
+      dynamicGit.setBaseBranch('release');
+
+      mockExec.mockResolvedValueOnce({
+        stdout: '2\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await dynamicGit.commitCountVsMaster();
+
+      expect(result).toBe(2);
+      expect(mockExec).toHaveBeenCalledTimes(1);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('rev-list --count release..HEAD')
+      );
+    });
+  });
 });

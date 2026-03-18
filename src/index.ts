@@ -54,13 +54,21 @@ const git = new GitService(projectRoot);
 const github = new GitHubService(projectRoot);
 const guard = new GuardService(git, github, state);
 
+async function loadConfig(): Promise<void> {
+  await config.load();
+  logger.setVerbose(config.get().verbose || false);
+  const baseBranch = config.get().git?.base_branch;
+  if (baseBranch) {
+    git.setBaseBranch(baseBranch);
+  }
+}
+
 // Register status command
 program
   .command('status')
   .description('Display current pipeline status')
   .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const statusCommand = new StatusCommand(logger, config, state, git, github, guard, projectRoot);
     await statusCommand.execute();
   });
@@ -72,8 +80,7 @@ program
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet, node)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const queueCommand = new QueueCommand(logger, config, state, git, github, guard, projectRoot);
     await queueCommand.execute(options);
   });
@@ -85,8 +92,7 @@ program
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet, node)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const nextCommand = new NextCommand(logger, config, state, git, github, guard, projectRoot);
     await nextCommand.execute(options);
   });
@@ -96,8 +102,7 @@ program
   .command('reset')
   .description('Abort current pipeline and clean up state')
   .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const resetCommand = new ResetCommand(logger, config, state, git, github, guard, projectRoot);
     await resetCommand.execute();
   });
@@ -108,8 +113,7 @@ program
   .description('Completely undo all work for current issue (deletes branch, closes PR, clears state)')
   .option('--no-close-pr', 'Do not close any open PRs')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const rollbackCommand = new RollbackCommand(logger, config, state, git, github, guard, projectRoot);
     await rollbackCommand.execute(options);
   });
@@ -121,8 +125,7 @@ program
   .option('--issue <number>', 'Implement a specific issue number')
   .option('--dry-run', 'Show what would be done without executing')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const implementCommand = new ImplementCommand(logger, config, state, git, github, guard, projectRoot);
     await implementCommand.execute(options);
   });
@@ -134,8 +137,7 @@ program
   .option('--issue <number>', 'Test a specific issue number (bypasses state)')
   .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack, node)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const testCommand = new TestCommand(logger, config, state, git, github, guard, projectRoot);
     await testCommand.execute(options);
   });
@@ -162,8 +164,7 @@ program
   .option('-c, --comment', 'Provide feedback on a PR with interactive prompt')
   .option('--pr <number>', 'Specify PR number to comment on (auto-detects from branch if not provided)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
     await prCommand.execute(options);
   });
@@ -176,8 +177,7 @@ program
   .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
   .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet, node)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const shipCommand = new ShipCommand(logger, config, state, git, github, guard, projectRoot);
     await shipCommand.execute(options);
   });
@@ -190,8 +190,7 @@ program
   .option('--pr <number>', 'Review a specific PR number')
   .option('--dry-run', 'Show what would be done without executing')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
     await reviewCommand.execute(options);
   });
@@ -202,8 +201,7 @@ program
   .description('Set up test infrastructure (vitest, testing-library, msw)')
   .option('--component <name>', 'Component to bootstrap (frontend, backend, infra, serverless, node, all)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const bootstrapCommand = new BootstrapCommand(logger, config, state, git, github, guard, projectRoot);
     await bootstrapCommand.execute(options);
   });
@@ -213,8 +211,7 @@ program
   .command('create-issue')
   .description('Create a new GitHub issue interactively')
   .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const createIssueCommand = new CreateIssueCommand(logger, config, state, git, github, guard, projectRoot);
     await createIssueCommand.execute();
   });
@@ -224,8 +221,7 @@ program
   .command('setup-labels')
   .description('Create rig labels on GitHub repo')
   .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const setupLabelsCommand = new SetupLabelsCommand(logger, config, state, git, github, guard, projectRoot);
     await setupLabelsCommand.execute();
   });
@@ -235,8 +231,7 @@ program
   .command('story')
   .description('Decompose a planning spec into atomic GitHub issues')
   .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
+    await loadConfig();
     const storyCommand = new StoryCommand(logger, config, state, git, github, guard, projectRoot);
     await storyCommand.execute();
   });

@@ -202,7 +202,10 @@ export class ReviewCommand extends BaseCommand {
 
     // Assemble review prompt
     this.logger.step(1, 3, 'Assembling review prompt...');
-    const prompt = await this.promptBuilder.assembleReviewPrompt(issueNumber);
+    const rigConfigForReview = this.config.get();
+    const prompt = await this.promptBuilder.assembleReviewPrompt(issueNumber, {
+      defaultBranch: rigConfigForReview.git?.base_branch,
+    });
 
     // Extract review file path from prompt (it's in the template)
     // Resolve relative to git repo root since the agent runs from there
