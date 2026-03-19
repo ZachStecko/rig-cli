@@ -2,9 +2,7 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-rig-cli's philosophy for AI coding is simple. When humanity went from horse-drawn carriages to cars we created traffic rules and speed limits to manage the new speed. AI coding is no different. Just because we can now move at 100 mph instead of 5 does not mean we should drive without discipline.
-
-An orchestration layer on top of Claude Code, GitHub, and Git. You plan features with Claude Code, then rig-cli handles the grunt work — filing issues, implementing code, running tests, opening PRs, and reviewing changes.
+An orchestration layer on top of coding agents, GitHub, and Git. You plan features with coding agents, then rig-cli handles the grunt work — filing issues, implementing code, running tests, opening PRs, and reviewing changes.
 
 ---
 
@@ -14,7 +12,7 @@ An orchestration layer on top of Claude Code, GitHub, and Git. You plan features
 plan → create-issue → ship → review
 ```
 
-1. **Plan** with Claude Code in your editor. Hash out the feature, agree on an approach.
+1. **Plan** with coding agents in your editor. Hash out the feature, agree on an approach.
 2. **`rig create-issue`** — paste your plan, AI structures it into a GitHub issue.
 3. **`rig ship`** — picks the issue, creates a branch, implements, tests, and opens a PR.
 4. **`rig review --pr 47`** — AI reviews the diff, you triage findings, selected fixes are applied and pushed.
