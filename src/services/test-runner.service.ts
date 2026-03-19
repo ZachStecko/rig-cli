@@ -880,15 +880,25 @@ export class TestRunnerService {
         const ext = file.substring(file.lastIndexOf('.'));
         const testFile = `${base}.test${ext}`;
 
+        // A .ts source file may have a .test.tsx test (e.g., hooks tested with JSX)
+        const altExt = ext === '.ts' ? '.tsx' : '.ts';
+        const altTestFile = `${base}.test${altExt}`;
+
         // Also check mirror test directory (e.g., src/utils/foo.ts → tests/utils/foo.test.ts)
         const mirrorTestFile = file.startsWith('src/')
           ? `tests/${file.slice(4, file.lastIndexOf('.'))}.test${ext}`
+          : null;
+        const altMirrorTestFile = file.startsWith('src/')
+          ? `tests/${file.slice(4, file.lastIndexOf('.'))}.test${altExt}`
           : null;
 
         const hasTest =
           newFiles.includes(testFile) ||
           existsSync(resolve(this.projectRoot, testFile)) ||
-          (mirrorTestFile && (newFiles.includes(mirrorTestFile) || existsSync(resolve(this.projectRoot, mirrorTestFile))));
+          newFiles.includes(altTestFile) ||
+          existsSync(resolve(this.projectRoot, altTestFile)) ||
+          (mirrorTestFile && (newFiles.includes(mirrorTestFile) || existsSync(resolve(this.projectRoot, mirrorTestFile)))) ||
+          (altMirrorTestFile && (newFiles.includes(altMirrorTestFile) || existsSync(resolve(this.projectRoot, altMirrorTestFile))));
 
         if (!hasTest) {
           missingTests.push(`${file} → expected ${testFile}`);
