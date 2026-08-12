@@ -1,6 +1,11 @@
 import { LLMProvider, createProvider } from './llm-provider.js';
 import { RigConfig } from '../types/config.types.js';
-import { getAllValidLabels, isValidLabel } from '../types/labels.types.js';
+import {
+  getAllValidLabels,
+  isValidLabel,
+  COMPONENT_LABELS,
+  TYPE_LABELS,
+} from '../types/labels.types.js';
 
 /**
  * Response from structuring an issue description.
@@ -60,12 +65,19 @@ export class LLMService {
     // Build the prompt for structuring the issue, with JSON output instruction
     const prompt = this.buildIssuePrompt(rawDescription);
     const validLabels = getAllValidLabels();
+    // Derive the label vocabulary from labels.types.ts so the prompt cannot
+    // drift from the source of truth. 'story' is reserved for parent issues
+    // created by rig story, so it is excluded here.
+    const componentList = Object.values(COMPONENT_LABELS).join(', ');
+    const typeList = Object.values(TYPE_LABELS)
+      .filter(label => label !== TYPE_LABELS.STORY)
+      .join(', ');
     const jsonPrompt = `${prompt}
 
 Respond with ONLY a valid JSON object with "title", "body", and "labels" fields. No markdown fences, no explanation.
 
 For "labels", pick 1-4 from this list based on the issue content: ${validLabels.join(', ')}
-Always include one component label (backend, frontend, fullstack, devnet, node, infra, serverless) and one type label (bug, enhancement, feature, refactor, docs, chore, test).`;
+Always include one component label (${componentList}) and one type label (${typeList}).`;
 
     // Call Claude via the provider
     const responseText = await this.agent.prompt(jsonPrompt);
@@ -135,7 +147,7 @@ Always include one component label (backend, frontend, fullstack, devnet, node, 
     }
 
     const validLabels = getAllValidLabels();
-    const prompt = `You are decomposing a planning spec into atomic GitHub issues for implementation by Claude Code.
+    const prompt = `You are decomposing a planning spec into atomic GitHub issues.
 
 Each issue must be independently implementable — a single developer should be able to pick it up and complete it without needing other issues to be done first (unless explicitly noted as a dependency).
 
@@ -206,7 +218,7 @@ Respond with ONLY a valid JSON array of objects, each with "title", "body", and 
    * @returns Formatted prompt
    */
   private buildIssuePrompt(rawDescription: string): string {
-    return `You are writing an implementation spec for Claude Code. Output a GitHub issue that \`rig implement\` will execute — precision over prose.
+    return `You are writing an implementation-ready GitHub issue. Output a spec a developer or their coding agent can execute — precision over prose.
 
 Raw input:
 ${rawDescription}

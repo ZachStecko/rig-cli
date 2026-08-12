@@ -45,6 +45,14 @@ export class StoryCommand extends BaseCommand {
     this.logger.header('Decompose Planning Spec');
     console.log('');
 
+    // Check LLM availability before asking the user to paste anything,
+    // so a missing CLI or API key fails fast instead of after input.
+    const llmAvailable = await this.llm.isAvailable();
+    if (!llmAvailable) {
+      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
+      return;
+    }
+
     // Prompt for spec content
     this.logger.info('Paste your planning spec / PRD (multiline input):');
     this.logger.dim('  Press Ctrl+D when done');
@@ -57,13 +65,6 @@ export class StoryCommand extends BaseCommand {
     }
 
     this.logger.config('Spec length', `${specContent.length} chars`);
-
-    // Check LLM availability
-    const llmAvailable = await this.llm.isAvailable();
-    if (!llmAvailable) {
-      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
-      return;
-    }
 
     // Structure parent story
     let parentIssue;

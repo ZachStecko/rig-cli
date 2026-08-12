@@ -62,6 +62,15 @@ export class CreateIssueCommand extends BaseCommand {
       this.logger.config('Default labels', defaultLabels.join(', '));
     }
 
+    // Check LLM availability before asking the user to type anything,
+    // so a missing CLI or API key fails fast instead of after input.
+    const llmAvailable = await this.llm.isAvailable();
+    this.logger.config('Agent available', llmAvailable);
+    if (!llmAvailable) {
+      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
+      return;
+    }
+
     // Get raw description from user
     this.logger.info('Describe the issue in your own words (multiline input):');
     this.logger.dim('  Press Ctrl+D when done');
@@ -74,14 +83,6 @@ export class CreateIssueCommand extends BaseCommand {
     }
 
     this.logger.config('Description length', `${rawDescription.length} chars`);
-
-    // Check if LLM service is available
-    const llmAvailable = await this.llm.isAvailable();
-    this.logger.config('Agent available', llmAvailable);
-    if (!llmAvailable) {
-      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
-      return;
-    }
 
     // Structure the issue using LLM
     let structured;

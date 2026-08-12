@@ -92,4 +92,10 @@ program
     await setupLabelsCommand.execute();
   });
 
-program.parse();
+// parseAsync so async command actions are awaited; without this, thrown
+// errors (e.g. GuardError) become unhandled promise rejections with raw
+// stack traces instead of clean messages.
+program.parseAsync().catch((error: unknown) => {
+  logger.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});

@@ -55,6 +55,10 @@ export class BinaryProvider implements LLMProvider {
       return { authenticated: true, method: 'api_key' };
     }
 
+    // The claude CLI has no cheap way to verify subscription login, so an
+    // installed binary is treated as authenticated. A logged-out CLI fails
+    // at prompt() time; commands check availability before taking input so
+    // that failure surfaces early rather than after the user types.
     const installed = await this.isAvailable();
     if (installed) {
       return { authenticated: true, method: 'subscription' };

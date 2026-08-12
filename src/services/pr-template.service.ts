@@ -1,6 +1,6 @@
-import { GitHubService } from './github.service.js';
 import { GitService } from './git.service.js';
 import { TemplateEngine } from './template-engine.service.js';
+import { Issue } from '../types/issue.types.js';
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -15,23 +15,16 @@ const __dirname = dirname(__filename);
  * test results, and substituting them into the pr-body.md template.
  */
 export class PrTemplateService {
-  private github: GitHubService;
   private git: GitService;
   private templateEngine: TemplateEngine;
 
   /**
    * Creates a new PrTemplateService instance.
    *
-   * @param github - GitHubService for fetching issue data
    * @param git - GitService for git operations
    * @param templateEngine - TemplateEngine for rendering templates
    */
-  constructor(
-    github: GitHubService,
-    git: GitService,
-    templateEngine: TemplateEngine
-  ) {
-    this.github = github;
+  constructor(git: GitService, templateEngine: TemplateEngine) {
     this.git = git;
     this.templateEngine = templateEngine;
   }
@@ -39,15 +32,14 @@ export class PrTemplateService {
   /**
    * Generates PR body text from template.
    *
-   * Gathers issue info and commit history, then substitutes them into
-   * the pr-body.md template.
+   * Uses the already-fetched issue plus commit history, then substitutes
+   * them into the pr-body.md template.
    *
-   * @param issueNumber - Issue number this PR addresses
+   * @param issue - The issue this PR addresses (fetched by the caller)
    * @returns Rendered PR body text
    */
-  async generatePrBody(issueNumber: number): Promise<string> {
-    // Fetch issue data
-    const issue = await this.github.viewIssue(issueNumber);
+  async generatePrBody(issue: Issue): Promise<string> {
+    const issueNumber = issue.number;
 
     // Build issue summary (first paragraph or title)
     const issueSummary = this.extractSummary(issue.body || '', issue.title);

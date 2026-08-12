@@ -58,9 +58,11 @@ describe('CreateIssueCommand', () => {
 
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-    // Mock LLMService prototype methods
+    // Mock LLMService prototype methods.
+    // isAvailable defaults to true because execute() checks it before
+    // prompting for input; tests override it to exercise the failure path.
     mockLLMService = {
-      isAvailable: vi.fn(),
+      isAvailable: vi.fn().mockResolvedValue(true),
       structureIssue: vi.fn(),
     };
 

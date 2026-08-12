@@ -6,6 +6,7 @@ import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
 import { PrTemplateService } from '../services/pr-template.service.js';
 import { TemplateEngine } from '../services/template-engine.service.js';
+import { Issue } from '../types/issue.types.js';
 
 /**
  * PrCommand creates or updates a pull request for the current branch.
@@ -30,7 +31,7 @@ export class PrCommand extends BaseCommand {
     projectRoot?: string
   ) {
     super(logger, config, git, github, guard, projectRoot);
-    this.prTemplate = new PrTemplateService(this.github, this.git, new TemplateEngine());
+    this.prTemplate = new PrTemplateService(this.git, new TemplateEngine());
   }
 
   /**
@@ -48,11 +49,22 @@ export class PrCommand extends BaseCommand {
 
     const currentBranch = await this.git.currentBranch();
 
+    // Refuse to run on the base branch: step 1 pushes the current branch,
+    // and pushing the base branch directly is a destructive side effect.
+    const baseBranch = await this.git.getBaseBranchName().catch(() => null);
+    if (baseBranch !== null && currentBranch === baseBranch) {
+      this.logger.error(`You are on the base branch '${baseBranch}'.`);
+      this.logger.dim('Create a feature branch first, then run rig pr again.');
+      process.exit(1);
+      return; // For testing
+    }
+
     // Determine issue number: --issue flag first, then branch name
     let issueNumber: number | null;
     if (options?.issue) {
-      issueNumber = parseInt(options.issue, 10);
-      if (isNaN(issueNumber)) {
+      const trimmed = options.issue.trim();
+      issueNumber = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : NaN;
+      if (isNaN(issueNumber) || issueNumber <= 0) {
         this.logger.error(`Invalid issue number: ${options.issue}`);
         process.exit(1);
         return; // For testing
@@ -67,7 +79,15 @@ export class PrCommand extends BaseCommand {
       }
     }
 
-    const issueData = await this.github.viewIssue(issueNumber);
+    let issueData: Issue;
+    try {
+      issueData = await this.github.viewIssue(issueNumber);
+    } catch (error) {
+      this.logger.error(`Cannot fetch issue #${issueNumber}: ${(error as Error).message}`);
+      this.logger.dim('Check the issue number, or pass the right one with --issue <number>.');
+      process.exit(1);
+      return; // For testing
+    }
 
     this.logger.header(`Creating Pull Request for Issue #${issueNumber}`);
     console.log('');
@@ -83,7 +103,7 @@ export class PrCommand extends BaseCommand {
 
       // Step 2: Generate PR body
       this.logger.step(2, 3, 'Generating PR body from template...');
-      const prBody = await this.prTemplate.generatePrBody(issueNumber);
+      const prBody = await this.prTemplate.generatePrBody(issueData);
       console.log('');
 
       // Step 3: Check if PR already exists for this branch
@@ -135,11 +155,14 @@ export class PrCommand extends BaseCommand {
    * - "issue-42-slug" or "feat/issue-42-slug"
    * - "42-slug" or "feat/42-slug"
    *
+   * The bare-number pattern requires a non-digit after the dash so that
+   * date-prefixed branches like "2025-08-cleanup" do not match.
+   *
    * @param branch - The branch name
    * @returns The issue number, or null if none found
    */
   private parseIssueFromBranch(branch: string): number | null {
-    const patterns = [/(?:^|\/)issue-(\d+)/, /(?:^|\/)(\d+)-/];
+    const patterns = [/(?:^|\/)issue-(\d+)(?:$|-)/, /(?:^|\/)(\d+)-(?!\d)/];
     for (const pattern of patterns) {
       const match = branch.match(pattern);
       if (match) {

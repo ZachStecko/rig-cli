@@ -44,6 +44,7 @@ describe('PrCommand', () => {
     mockGit = {
       currentBranch: vi.fn(),
       push: vi.fn(),
+      getBaseBranchName: vi.fn().mockResolvedValue('main'),
     } as any;
 
     mockGitHub = {
@@ -62,6 +63,7 @@ describe('PrCommand', () => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
 
     vi.clearAllMocks();
+    vi.mocked(mockGit.getBaseBranchName).mockResolvedValue('main');
 
     command = new PrCommand(
       mockLogger,
@@ -133,6 +135,40 @@ describe('PrCommand', () => {
       expect(mockLogger.error).toHaveBeenCalled();
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    it('does not treat a date-prefixed branch as an issue number', async () => {
+      vi.mocked(mockGit.currentBranch).mockResolvedValue('2025-08-cleanup');
+
+      await command.execute();
+
+      expect(mockGitHub.viewIssue).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        "Cannot detect an issue number from branch '2025-08-cleanup'."
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('refuses to run on the base branch', async () => {
+      vi.mocked(mockGit.currentBranch).mockResolvedValue('main');
+
+      await command.execute({ issue: '42' });
+
+      expect(mockGit.push).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith("You are on the base branch 'main'.");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('exits with a friendly message when the issue cannot be fetched', async () => {
+      vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-9999-x');
+      vi.mocked(mockGitHub.viewIssue).mockRejectedValue(new Error('issue not found'));
+
+      await command.execute();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Cannot fetch issue #9999: issue not found'
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   describe('PR creation', () => {
@@ -166,7 +202,9 @@ describe('PrCommand', () => {
 
       await command.execute();
 
-      expect(mockPrTemplate.generatePrBody).toHaveBeenCalledWith(42);
+      expect(mockPrTemplate.generatePrBody).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Add auth' })
+      );
       expect(mockGitHub.createPr).toHaveBeenCalledWith({
         title: 'Add auth',
         body: 'generated body',

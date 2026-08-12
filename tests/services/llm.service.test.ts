@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { LLMService, StructuredIssue } from '../../src/services/llm.service.js';
-import { CodeAgent } from '../../src/services/agents/base.agent.js';
+import { LLMProvider } from '../../src/services/llm-provider.js';
 
 describe('LLMService', () => {
   let llmService: LLMService;
-  let mockAgent: CodeAgent;
+  let mockAgent: LLMProvider;
 
   beforeEach(() => {
     mockAgent = {
+      name: 'Mock Provider',
       isAvailable: vi.fn(),
       checkAuth: vi.fn(),
       prompt: vi.fn(),
-      waitForCompletion: vi.fn(),
     } as any;
 
     llmService = new LLMService(mockAgent);

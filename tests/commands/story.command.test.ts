@@ -59,7 +59,7 @@ describe('StoryCommand', () => {
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     mockLLMService = {
-      isAvailable: vi.fn(),
+      isAvailable: vi.fn().mockResolvedValue(true),
       structureIssue: vi.fn(),
       decomposeStory: vi.fn(),
     };
