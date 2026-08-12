@@ -1,4 +1,7 @@
 import { exec } from '../utils/shell.js';
+import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 /**
  * GitService wraps git commands for repository operations.
@@ -175,8 +178,16 @@ export class GitService {
    */
   async commitAll(message: string): Promise<void> {
     await this.git('add -A');
-    const escaped = message.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    await this.git(`commit -m ${JSON.stringify(escaped)}`);
+    // Write message to a temp file to avoid shell escaping issues with
+    // backticks, quotes, and other special characters in commit messages.
+    const tmpDir = mkdtempSync(join(tmpdir(), 'rig-commit-'));
+    const msgFile = join(tmpDir, 'message.txt');
+    try {
+      writeFileSync(msgFile, message, 'utf-8');
+      await this.git(`commit --file="${msgFile}"`);
+    } finally {
+      try { unlinkSync(msgFile); } catch {}
+    }
   }
 
   /**

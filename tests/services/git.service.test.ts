@@ -1,11 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { GitService } from '../../src/services/git.service.js';
 import * as shell from '../../src/utils/shell.js';
+import * as fs from 'fs';
 
 // Mock the shell module
 vi.mock('../../src/utils/shell.js', () => ({
   exec: vi.fn(),
 }));
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof fs>();
+  return {
+    ...actual,
+    mkdtempSync: vi.fn().mockReturnValue('/tmp/rig-commit-abc123'),
+    writeFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+  };
+});
 
 describe('GitService', () => {
   let gitService: GitService;
@@ -718,45 +729,45 @@ describe('GitService', () => {
   });
 
   describe('commitAll', () => {
-    it('stages all changes and commits', async () => {
+    it('stages all changes and commits via temp file', async () => {
       mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
 
       await gitService.commitAll('fix: simple message');
 
       expect(mockExec).toHaveBeenCalledWith(`git -C "${projectRoot}" add -A`);
+      expect(fs.mkdtempSync).toHaveBeenCalled();
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/tmp/rig-commit-abc123/message.txt',
+        'fix: simple message',
+        'utf-8'
+      );
       expect(mockExec).toHaveBeenCalledWith(
-        `git -C "${projectRoot}" commit -m "fix: simple message"`
+        `git -C "${projectRoot}" commit --file="/tmp/rig-commit-abc123/message.txt"`
+      );
+      expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/rig-commit-abc123/message.txt');
+    });
+
+    it('handles backticks and special chars without escaping', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      const message = 'fix: update `composition.ts` with $variable';
+      await gitService.commitAll(message);
+
+      // Message is written verbatim — no shell escaping needed
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/tmp/rig-commit-abc123/message.txt',
+        message,
+        'utf-8'
       );
     });
 
-    it('escapes backticks in commit messages', async () => {
-      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+    it('cleans up temp file even on commit failure', async () => {
+      mockExec.mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 }); // add -A
+      mockExec.mockResolvedValueOnce({ stdout: '', stderr: 'error', exitCode: 1 }); // commit
 
-      await gitService.commitAll('fix: update `composition.ts` types');
+      await expect(gitService.commitAll('fix: will fail')).rejects.toThrow();
 
-      expect(mockExec).toHaveBeenCalledWith(
-        'git -C "' + projectRoot + '" commit -m "fix: update \\\\`composition.ts\\\\` types"'
-      );
-    });
-
-    it('escapes dollar signs in commit messages', async () => {
-      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
-
-      await gitService.commitAll('fix: handle $variable interpolation');
-
-      expect(mockExec).toHaveBeenCalledWith(
-        'git -C "' + projectRoot + '" commit -m "fix: handle \\\\$variable interpolation"'
-      );
-    });
-
-    it('escapes both backticks and dollar signs together', async () => {
-      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
-
-      await gitService.commitAll('fix: `Composition.key` typed as $string');
-
-      expect(mockExec).toHaveBeenCalledWith(
-        'git -C "' + projectRoot + '" commit -m "fix: \\\\`Composition.key\\\\` typed as \\\\$string"'
-      );
+      expect(fs.unlinkSync).toHaveBeenCalledWith('/tmp/rig-commit-abc123/message.txt');
     });
   });
 
