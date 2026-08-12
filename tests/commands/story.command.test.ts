@@ -21,6 +21,7 @@ describe('StoryCommand', () => {
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
   let consoleLogSpy: any;
+  let exitSpy: any;
   let mockLLMService: any;
 
   beforeEach(() => {
@@ -57,6 +58,7 @@ describe('StoryCommand', () => {
     } as any;
 
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
 
     mockLLMService = {
       isAvailable: vi.fn().mockResolvedValue(true),

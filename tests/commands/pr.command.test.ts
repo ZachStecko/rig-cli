@@ -101,8 +101,11 @@ describe('PrCommand', () => {
     it.each([
       ['issue-42-add-auth', 42],
       ['feat/issue-42-add-auth', 42],
+      ['issue-42_fix', 42],
       ['42-add-auth', 42],
       ['feat/42-add-auth', 42],
+      ['42-2fa-support', 42],
+      ['1234-fix-things', 1234],
     ])('parses issue number from branch %s', async (branch, expected) => {
       vi.mocked(mockGit.currentBranch).mockResolvedValue(branch);
       vi.mocked(mockGitHub.viewIssue).mockResolvedValue({ title: 'Add auth', labels: [] } as any);
@@ -136,14 +139,19 @@ describe('PrCommand', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it('does not treat a date-prefixed branch as an issue number', async () => {
-      vi.mocked(mockGit.currentBranch).mockResolvedValue('2025-08-cleanup');
+    it.each([
+      ['2025-08-cleanup'],
+      ['2025-cleanup'],
+      ['feat/2025-cleanup'],
+      ['0815-hotfix'],
+    ])('does not treat date-like branch %s as an issue number', async (branch) => {
+      vi.mocked(mockGit.currentBranch).mockResolvedValue(branch);
 
       await command.execute();
 
       expect(mockGitHub.viewIssue).not.toHaveBeenCalled();
       expect(mockLogger.error).toHaveBeenCalledWith(
-        "Cannot detect an issue number from branch '2025-08-cleanup'."
+        `Cannot detect an issue number from branch '${branch}'.`
       );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
@@ -154,7 +162,33 @@ describe('PrCommand', () => {
       await command.execute({ issue: '42' });
 
       expect(mockGit.push).not.toHaveBeenCalled();
-      expect(mockLogger.error).toHaveBeenCalledWith("You are on the base branch 'main'.");
+      expect(mockLogger.error).toHaveBeenCalledWith("You are on a protected branch 'main'.");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('protects main even when a different base branch is configured', async () => {
+      vi.mocked(mockGit.getBaseBranchName).mockResolvedValue('develop');
+      vi.mocked(mockGit.currentBranch).mockResolvedValue('main');
+
+      await command.execute({ issue: '42' });
+
+      expect(mockGit.push).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith("You are on a protected branch 'main'.");
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('errors when the base branch cannot be determined', async () => {
+      vi.mocked(mockGit.getBaseBranchName).mockRejectedValue(
+        new Error('Neither "main" nor "master" branch found')
+      );
+      vi.mocked(mockGit.currentBranch).mockResolvedValue('issue-42-x');
+
+      await command.execute();
+
+      expect(mockGit.push).not.toHaveBeenCalled();
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Cannot determine the base branch: Neither "main" nor "master" branch found'
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 

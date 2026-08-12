@@ -57,7 +57,8 @@ export class CreateIssueCommand extends BaseCommand {
         this.logger.error(`Invalid labels in config: ${invalidLabels.join(', ')}`);
         this.logger.info('Valid labels are defined in src/types/labels.types.ts');
         this.logger.info(`Examples: ${getAllValidLabels().slice(0, 10).join(', ')}, ...`);
-        return;
+        process.exit(1);
+        return; // For testing
       }
       this.logger.config('Default labels', defaultLabels.join(', '));
     }
@@ -68,7 +69,8 @@ export class CreateIssueCommand extends BaseCommand {
     this.logger.config('Agent available', llmAvailable);
     if (!llmAvailable) {
       this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Get raw description from user
@@ -96,7 +98,8 @@ export class CreateIssueCommand extends BaseCommand {
       this.logger.timing('Issue structuring', Date.now() - startTime);
     } catch (error) {
       this.logger.error(`Failed to structure issue: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Display preview
@@ -141,6 +144,7 @@ export class CreateIssueCommand extends BaseCommand {
       console.log(`  https://github.com/${repoName}/issues/${issueNumber}`);
     } catch (error) {
       this.logger.error(`Failed to create issue: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      process.exit(1);
     }
   }
 

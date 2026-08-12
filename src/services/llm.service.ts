@@ -5,7 +5,22 @@ import {
   isValidLabel,
   COMPONENT_LABELS,
   TYPE_LABELS,
+  SPECIAL_LABELS,
 } from '../types/labels.types.js';
+
+/**
+ * Labels the LLM must not pick: 'story' marks parent issues created by
+ * rig story, and the rig-* markers are applied by rig itself.
+ */
+const RESERVED_LABELS = new Set<string>([
+  TYPE_LABELS.STORY,
+  ...Object.values(SPECIAL_LABELS),
+]);
+
+/** Labels the LLM may pick from, derived from the single source of truth. */
+function pickableLabels(): string[] {
+  return getAllValidLabels().filter(label => !RESERVED_LABELS.has(label));
+}
 
 /**
  * Response from structuring an issue description.
@@ -36,9 +51,10 @@ export class LLMService {
   }
 
   /**
-   * Checks if the Claude Agent SDK is available (API key is set).
+   * Checks if the configured provider is available: the claude CLI is
+   * installed (binary provider) or ANTHROPIC_API_KEY is set (sdk provider).
    *
-   * @returns true if the agent is available, false otherwise
+   * @returns true if the provider is available, false otherwise
    */
   async isAvailable(): Promise<boolean> {
     return this.agent.isAvailable();
@@ -53,7 +69,7 @@ export class LLMService {
    *
    * @param rawDescription - The user's unstructured issue description
    * @returns Structured issue with title and body
-   * @throws Error if API key is not set or API call fails
+   * @throws Error if the provider is not authenticated or the call fails
    */
   async structureIssue(rawDescription: string): Promise<StructuredIssue> {
     // Check if agent is available
@@ -64,10 +80,8 @@ export class LLMService {
 
     // Build the prompt for structuring the issue, with JSON output instruction
     const prompt = this.buildIssuePrompt(rawDescription);
-    const validLabels = getAllValidLabels();
     // Derive the label vocabulary from labels.types.ts so the prompt cannot
-    // drift from the source of truth. 'story' is reserved for parent issues
-    // created by rig story, so it is excluded here.
+    // drift from the source of truth.
     const componentList = Object.values(COMPONENT_LABELS).join(', ');
     const typeList = Object.values(TYPE_LABELS)
       .filter(label => label !== TYPE_LABELS.STORY)
@@ -76,7 +90,7 @@ export class LLMService {
 
 Respond with ONLY a valid JSON object with "title", "body", and "labels" fields. No markdown fences, no explanation.
 
-For "labels", pick 1-4 from this list based on the issue content: ${validLabels.join(', ')}
+For "labels", pick 1-4 from this list based on the issue content: ${pickableLabels().join(', ')}
 Always include one component label (${componentList}) and one type label (${typeList}).`;
 
     // Call Claude via the provider
@@ -146,7 +160,10 @@ Always include one component label (${componentList}) and one type label (${type
       throw new Error(auth.error || 'Agent is not available. Check your configuration.');
     }
 
-    const validLabels = getAllValidLabels();
+    const componentList = Object.values(COMPONENT_LABELS).join(', ');
+    const typeList = Object.values(TYPE_LABELS)
+      .filter(label => label !== TYPE_LABELS.STORY)
+      .join(', ');
     const prompt = `You are decomposing a planning spec into atomic GitHub issues.
 
 Each issue must be independently implementable — a single developer should be able to pick it up and complete it without needing other issues to be done first (unless explicitly noted as a dependency).
@@ -163,8 +180,8 @@ RULES:
 - Titles: imperative, 50-80 chars, with component prefix if clear (cli: / api: / ui: / etc.)
 - No filler prose. Senior engineer to senior engineer tone.
 
-For "labels" on each issue, pick 1-4 from this list: ${validLabels.join(', ')}
-Always include one component label and one type label.
+For "labels" on each issue, pick 1-4 from this list: ${pickableLabels().join(', ')}
+Always include one component label (${componentList}) and one type label (${typeList}).
 
 Respond with ONLY a valid JSON array of objects, each with "title", "body", and "labels" fields. No markdown fences, no explanation.`;
 

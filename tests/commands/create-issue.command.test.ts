@@ -21,6 +21,7 @@ describe('CreateIssueCommand', () => {
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
   let consoleLogSpy: any;
+  let exitSpy: any;
   let mockLLMService: any;
 
   beforeEach(() => {
@@ -57,6 +58,7 @@ describe('CreateIssueCommand', () => {
     } as any;
 
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
 
     // Mock LLMService prototype methods.
     // isAvailable defaults to true because execute() checks it before

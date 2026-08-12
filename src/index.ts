@@ -97,5 +97,14 @@ program
 // stack traces instead of clean messages.
 program.parseAsync().catch((error: unknown) => {
   logger.error(error instanceof Error ? error.message : String(error));
+  let verbose = false;
+  try {
+    verbose = config.get().verbose || false;
+  } catch {
+    // Config not loaded yet; stay non-verbose.
+  }
+  if (verbose && error instanceof Error && error.stack) {
+    console.error(error.stack);
+  }
   process.exit(1);
 });

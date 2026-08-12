@@ -51,9 +51,22 @@ export class PrCommand extends BaseCommand {
 
     // Refuse to run on the base branch: step 1 pushes the current branch,
     // and pushing the base branch directly is a destructive side effect.
-    const baseBranch = await this.git.getBaseBranchName().catch(() => null);
-    if (baseBranch !== null && currentBranch === baseBranch) {
-      this.logger.error(`You are on the base branch '${baseBranch}'.`);
+    // The base branch is required later anyway (commit log vs base), so an
+    // unresolvable base is a hard error, not a skipped check.
+    let baseBranch: string;
+    try {
+      baseBranch = await this.git.getBaseBranchName();
+    } catch (error) {
+      this.logger.error(`Cannot determine the base branch: ${(error as Error).message}`);
+      this.logger.dim('Set git.base_branch in .rig.yml and run rig pr again.');
+      process.exit(1);
+      return; // For testing
+    }
+    // 'main' and 'master' stay protected even when a different base branch
+    // is configured — pushing them by accident is just as destructive.
+    const protectedBranches = new Set([baseBranch, 'main', 'master']);
+    if (protectedBranches.has(currentBranch)) {
+      this.logger.error(`You are on a protected branch '${currentBranch}'.`);
       this.logger.dim('Create a feature branch first, then run rig pr again.');
       process.exit(1);
       return; // For testing
@@ -152,23 +165,33 @@ export class PrCommand extends BaseCommand {
    * Parses an issue number from a branch name.
    *
    * Supported patterns (first match wins):
-   * - "issue-42-slug" or "feat/issue-42-slug"
+   * - "issue-42-slug" or "feat/issue-42-slug" (any separator after the number)
    * - "42-slug" or "feat/42-slug"
    *
-   * The bare-number pattern requires a non-digit after the dash so that
-   * date-prefixed branches like "2025-08-cleanup" do not match.
+   * Bare-number prefixes that look like dates are rejected: numbers with a
+   * leading zero ("0815-hotfix") and 4-digit years 1900-2099
+   * ("2025-cleanup", "2025-08-cleanup"). For those branches, pass --issue.
    *
    * @param branch - The branch name
    * @returns The issue number, or null if none found
    */
   private parseIssueFromBranch(branch: string): number | null {
-    const patterns = [/(?:^|\/)issue-(\d+)(?:$|-)/, /(?:^|\/)(\d+)-(?!\d)/];
-    for (const pattern of patterns) {
-      const match = branch.match(pattern);
-      if (match) {
-        return parseInt(match[1], 10);
+    const explicit = branch.match(/(?:^|\/)issue-(\d+)(?!\d)/);
+    if (explicit) {
+      return parseInt(explicit[1], 10);
+    }
+
+    const bare = branch.match(/(?:^|\/)(\d+)(?=[-_])/);
+    if (bare) {
+      const digits = bare[1];
+      const value = parseInt(digits, 10);
+      const hasLeadingZero = digits.length > 1 && digits.startsWith('0');
+      const looksLikeYear = digits.length === 4 && value >= 1900 && value <= 2099;
+      if (!hasLeadingZero && !looksLikeYear) {
+        return value;
       }
     }
+
     return null;
   }
 }

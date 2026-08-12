@@ -39,6 +39,7 @@ export class BinaryProvider implements LLMProvider {
   private claudeService: ClaudeService;
   private verbose: boolean;
   private timeoutMs: number;
+  private installedPromise?: Promise<boolean>;
 
   constructor(verbose?: boolean, timeoutMs?: number) {
     this.claudeService = new ClaudeService();
@@ -47,7 +48,10 @@ export class BinaryProvider implements LLMProvider {
   }
 
   async isAvailable(): Promise<boolean> {
-    return this.claudeService.isInstalled();
+    // Memoized: whether the binary is installed cannot change mid-run, and
+    // one command may ask several times (availability check + per-call auth).
+    this.installedPromise ??= this.claudeService.isInstalled();
+    return this.installedPromise;
   }
 
   async checkAuth(): Promise<AuthStatus> {

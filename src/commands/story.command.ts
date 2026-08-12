@@ -50,7 +50,8 @@ export class StoryCommand extends BaseCommand {
     const llmAvailable = await this.llm.isAvailable();
     if (!llmAvailable) {
       this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Prompt for spec content
@@ -78,7 +79,8 @@ export class StoryCommand extends BaseCommand {
       this.logger.timing('Story structuring', Date.now() - startTime);
     } catch (error) {
       this.logger.error(`Failed to structure story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Preview parent
@@ -109,7 +111,8 @@ export class StoryCommand extends BaseCommand {
       });
     } catch (error) {
       this.logger.error(`Failed to create parent story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     const repoName = await this.github.repoName();
@@ -129,7 +132,8 @@ export class StoryCommand extends BaseCommand {
       this.logger.timing('Decomposition', Date.now() - startTime);
     } catch (error) {
       this.logger.error(`Failed to decompose story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Preview child issues
