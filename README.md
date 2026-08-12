@@ -52,6 +52,8 @@ rig story
 
 Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history.
 
+Date-like branch names (`2025-08-cleanup`, `8-15-hotfix`) are not treated as issue numbers — pass `--issue` for those. The command refuses to run on `main`, `master`, or the configured base branch.
+
 ```bash
 rig pr
 rig pr --issue 42
