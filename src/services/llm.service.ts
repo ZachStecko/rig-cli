@@ -1,5 +1,4 @@
-import { CodeAgent } from './agents/base.agent.js';
-import { createAgent } from './agents/agent-factory.js';
+import { LLMProvider, createProvider } from './llm-provider.js';
 import { RigConfig } from '../types/config.types.js';
 import { getAllValidLabels, isValidLabel } from '../types/labels.types.js';
 
@@ -25,10 +24,10 @@ const GITHUB_TITLE_MAX_LENGTH = 256;
  * tasks like structuring issue descriptions.
  */
 export class LLMService {
-  private agent: CodeAgent;
+  private agent: LLMProvider;
 
-  constructor(agent?: CodeAgent, config?: RigConfig) {
-    this.agent = agent ?? createAgent(config);
+  constructor(agent?: LLMProvider, config?: RigConfig) {
+    this.agent = agent ?? createProvider(config);
   }
 
   /**
@@ -68,10 +67,7 @@ Respond with ONLY a valid JSON object with "title", "body", and "labels" fields.
 For "labels", pick 1-4 from this list based on the issue content: ${validLabels.join(', ')}
 Always include one component label (backend, frontend, fullstack, devnet, node, infra, serverless) and one type label (bug, enhancement, feature, refactor, docs, chore, test).`;
 
-    // Call Claude via the agent
-    if (!this.agent.prompt) {
-      throw new Error('Agent does not support the prompt() method');
-    }
+    // Call Claude via the provider
     const responseText = await this.agent.prompt(jsonPrompt);
 
     // Extract JSON from the response — Claude may include preamble text
@@ -160,9 +156,6 @@ Always include one component label and one type label.
 
 Respond with ONLY a valid JSON array of objects, each with "title", "body", and "labels" fields. No markdown fences, no explanation.`;
 
-    if (!this.agent.prompt) {
-      throw new Error('Agent does not support the prompt() method');
-    }
     const responseText = await this.agent.prompt(prompt);
 
     let issues: StructuredIssue[];

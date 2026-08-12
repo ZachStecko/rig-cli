@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SetupLabelsCommand } from '../../src/commands/setup-labels.command.js';
 import { Logger } from '../../src/services/logger.service.js';
 import { ConfigManager } from '../../src/services/config-manager.service.js';
-import { StateManager } from '../../src/services/state-manager.service.js';
 import { GitService } from '../../src/services/git.service.js';
 import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
@@ -12,7 +11,6 @@ describe('SetupLabelsCommand', () => {
   let command: SetupLabelsCommand;
   let mockLogger: Logger;
   let mockConfig: ConfigManager;
-  let mockState: StateManager;
   let mockGit: GitService;
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
@@ -34,12 +32,6 @@ describe('SetupLabelsCommand', () => {
       get: vi.fn().mockReturnValue({}),
     } as any;
 
-    mockState = {
-      exists: vi.fn(),
-      read: vi.fn(),
-      write: vi.fn(),
-    } as any;
-
     mockGit = {
       currentBranch: vi.fn(),
     } as any;
@@ -57,7 +49,6 @@ describe('SetupLabelsCommand', () => {
     command = new SetupLabelsCommand(
       mockLogger,
       mockConfig,
-      mockState,
       mockGit,
       mockGitHub,
       mockGuard,

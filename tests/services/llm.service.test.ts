@@ -55,20 +55,6 @@ describe('LLMService', () => {
       ).rejects.toThrow('API key not set');
     });
 
-    it('throws error when agent does not support prompt method', async () => {
-      const agentWithoutPrompt = {
-        isAvailable: vi.fn(),
-        checkAuth: vi.fn().mockResolvedValue({ authenticated: true, error: null }),
-        waitForCompletion: vi.fn(),
-      } as any;
-
-      const service = new LLMService(agentWithoutPrompt);
-
-      await expect(
-        service.structureIssue('Add authentication')
-      ).rejects.toThrow('Agent does not support the prompt() method');
-    });
-
     it('parses valid JSON response from agent', async () => {
       const mockResponse = JSON.stringify({
         title: 'feat: Add user authentication',
@@ -231,20 +217,6 @@ export class AuthService {
       await expect(
         llmService.decomposeStory('spec content', 1)
       ).rejects.toThrow('API key not set');
-    });
-
-    it('throws error when agent does not support prompt method', async () => {
-      const agentWithoutPrompt = {
-        isAvailable: vi.fn(),
-        checkAuth: vi.fn().mockResolvedValue({ authenticated: true, error: null }),
-        waitForCompletion: vi.fn(),
-      } as any;
-
-      const service = new LLMService(agentWithoutPrompt);
-
-      await expect(
-        service.decomposeStory('spec content', 1)
-      ).rejects.toThrow('Agent does not support the prompt() method');
     });
 
     it('parses valid JSON array response', async () => {

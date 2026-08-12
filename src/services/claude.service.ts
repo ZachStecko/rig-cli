@@ -1,29 +1,11 @@
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import { exec } from '../utils/shell.js';
 
 /**
- * Options for running the Claude CLI.
- */
-export interface ClaudeRunOptions {
-  /** The prompt to send to Claude */
-  prompt: string;
-  /** Maximum number of turns for the agent conversation */
-  maxTurns: number;
-  /** Comma-separated list of allowed tools (e.g., "Read,Write,Bash") */
-  allowedTools: string;
-  /** Path to write verbose log output */
-  logFile: string;
-  /** Enable verbose output (default: false) */
-  verbose?: boolean;
-  /** Permission mode for file operations: 'default', 'bypassPermissions', 'acceptEdits', 'dontAsk', 'plan', or 'auto' (default: 'bypassPermissions') */
-  permissionMode?: 'default' | 'bypassPermissions' | 'acceptEdits' | 'dontAsk' | 'plan' | 'auto';
-}
-
-/**
- * ClaudeService wraps the Claude CLI for running agent sessions.
+ * ClaudeService wraps the Claude CLI for one-shot prompts.
  *
- * Spawns the `claude` command with appropriate flags and streams output.
- * The Claude CLI must be installed and available in PATH.
+ * Spawns the `claude` command with appropriate flags and returns the
+ * response text. The Claude CLI must be installed and available in PATH.
  */
 export class ClaudeService {
   /**
@@ -34,31 +16,6 @@ export class ClaudeService {
   async isInstalled(): Promise<boolean> {
     const result = await exec('claude --version');
     return result.exitCode === 0;
-  }
-
-  /**
-   * Detects if the current environment is a server/CI environment.
-   *
-   * @returns true if running in CI/server environment, false for local development
-   */
-  private isServerEnvironment(): boolean {
-    const ciEnvVars = [
-      'CI',
-      'GITHUB_ACTIONS',
-      'GITLAB_CI',
-      'CIRCLECI',
-      'TRAVIS',
-      'JENKINS_HOME',
-      'BUILDKITE',
-      'DRONE',
-      'CODEBUILD_BUILD_ID',
-    ];
-
-    const isCI = ciEnvVars.some(envVar => !!process.env[envVar]);
-
-    const hasDockerEnv = !!process.env.DOCKER_CONTAINER;
-
-    return isCI || hasDockerEnv;
   }
 
   /**
@@ -216,50 +173,4 @@ export class ClaudeService {
     }
   }
 
-  /**
-   * Runs a Claude agent session with the specified options.
-   *
-   * Spawns: claude -p "prompt" --max-turns N --allowedTools "tools" [--verbose] --output-format stream-json
-   *
-   * @param options - Claude run options
-   * @returns Promise that resolves with the spawned ChildProcess
-   */
-  async run(options: ClaudeRunOptions): Promise<ChildProcess> {
-    const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-    const isServerEnv = this.isServerEnvironment();
-
-    if (isServerEnv && !hasApiKey) {
-      console.warn('\nWarning: Running rig-cli in a CI/server environment without ANTHROPIC_API_KEY.');
-      console.warn('   Anthropic\'s Terms of Service require API key authentication for production use.');
-      console.warn('   For personal use on your local machine, subscription auth is fine.');
-      console.warn('   See: https://console.anthropic.com/ to get an API key\n');
-    }
-
-    const args = [
-      '-p',
-      options.prompt,
-      '--max-turns',
-      String(options.maxTurns),
-      '--allowedTools',
-      options.allowedTools,
-    ];
-
-    if (options.permissionMode) {
-      args.push('--permission-mode', options.permissionMode);
-    }
-
-    // stream-json requires --verbose, so always enable it
-    args.push('--verbose');
-    args.push('--output-format', 'stream-json');
-
-    const child = spawn('claude', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        CLAUDE_LOG_FILE: options.logFile,
-      },
-    });
-
-    return child;
-  }
 }
