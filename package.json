@@ -1,7 +1,7 @@
 {
   "name": "rig-cli",
   "version": "0.2.1",
-  "description": "AI agent orchestration framework for automating the software development lifecycle with Claude AI",
+  "description": "AI-assisted GitHub issue creation and PR opening. Plan to issue, branch to PR; you implement with your own tools.",
   "type": "module",
   "bin": {
     "rig": "./dist/index.js"
@@ -11,23 +11,14 @@
     "url": "git+https://github.com/zachstecko/rig-cli.git"
   },
   "keywords": [
-    "agent-orchestration",
-    "ai-agents",
-    "multi-agent-system",
-    "agent-framework",
-    "ai-orchestration",
+    "github",
+    "issues",
+    "pull-request",
     "claude-ai",
-    "llm-orchestration",
-    "autonomous-agents",
     "cli",
     "automation",
-    "github",
-    "ai",
     "workflow",
-    "pipeline",
-    "development",
     "devtools",
-    "code-generation",
     "ai-powered"
   ],
   "author": "Zach Stecko",

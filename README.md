@@ -2,26 +2,27 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-An orchestration layer on top of coding agents, GitHub, and Git. You plan features with coding agents, then rig-cli handles the grunt work — filing issues, implementing code, running tests, opening PRs, and reviewing changes.
+AI-assisted GitHub issue creation and PR opening. rig handles the chores around your code: it turns plans into well-formed GitHub issues, and finished branches into well-formed pull requests. You implement with whatever coding tool you prefer.
 
 ---
 
 ## Workflow
 
 ```
-plan → create-issue → ship → review
+rig create-issue  →  implement with your own tools  →  rig pr
 ```
 
-1. **Plan** with coding agents in your editor. Hash out the feature, agree on an approach.
-2. **`rig create-issue`** — paste your plan, AI structures it into a GitHub issue.
-3. **`rig ship`** — picks the issue, creates a branch, implements, tests, and opens a PR.
-4. **`rig review --pr 47`** — AI reviews the diff, you triage findings, selected fixes are applied and pushed.
+1. **`rig create-issue`** — paste a plan in plain text. AI structures it into a GitHub issue with title, body, and labels.
+2. **Implement** — pick up the issue with your editor, Claude Code, Cursor, or anything else. Name the branch `issue-42-short-slug`.
+3. **`rig pr`** — pushes the branch, generates a PR body from the issue and commits, and opens (or updates) the PR.
+
+For a full spec or PRD, use **`rig story`** instead of `create-issue`. It creates one parent story issue plus a set of small, independently implementable child issues.
 
 ---
 
 ## Install
 
-**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`), Git.
+**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: the [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or an `ANTHROPIC_API_KEY`.
 
 ```bash
 npm install -g rig-cli
@@ -29,157 +30,69 @@ npm install -g rig-cli
 
 ---
 
-## Configuration
-
-Create `.rig.yml` in your project root:
-
-```yaml
-agent:
-  provider: binary        # 'binary' (Claude CLI, default) or 'sdk' (API key)
-  max_turns: 80
-  permission_mode: bypassPermissions  # default | bypassPermissions | acceptEdits | dontAsk | plan | auto
-
-queue:
-  default_phase: null      # e.g. "Phase 1: MVP"
-  default_component: null  # e.g. "backend"
-
-test:
-  require_new_tests: true
-
-pr:
-  draft: false
-  reviewers: []            # ["username1", "username2"]
-
-git:
-  base_branch: main        # auto-detected if omitted (main or master)
-
-components:
-  frontend:
-    path: ./frontend
-    test_command: npm test
-  backend:
-    path: ./backend
-    test_command: go test ./...
-
-verbose: false
-```
-
-All fields are optional. Missing values use defaults.
-
----
-
 ## Commands
-
-### `rig ship`
-
-Full pipeline: pick issue → branch → implement → test → PR → review. Resumes from last stage if interrupted.
-
-```bash
-rig ship
-rig ship --issue 42
-rig ship --phase "Phase 1: MVP" --component backend
-```
-
-### `rig next`
-
-Pick the next issue from the priority queue and create a feature branch.
-
-```bash
-rig next
-rig next --phase "Phase 2" --component frontend
-```
-
-### `rig implement`
-
-Run the implementation agent for the current or specified issue.
-
-```bash
-rig implement
-rig implement --issue 42
-rig implement --dry-run
-```
-
-### `rig test`
-
-Run the test suite. Auto-retries with a fix agent on failures (up to 3 attempts).
-
-```bash
-rig test
-rig test --issue 42 --component backend
-```
-
-### `rig pr`
-
-Create or update a pull request. Use `-c` to post feedback and auto-fix.
-
-```bash
-rig pr
-rig pr --issue 42
-rig pr -c              # interactive feedback → AI fixes → push
-rig pr -c --pr 123
-```
-
-### `rig review`
-
-AI code review with interactive triage and auto-fix.
-
-```bash
-rig review
-rig review --issue 42
-rig review --pr 100
-rig review --dry-run
-```
 
 ### `rig create-issue`
 
-Describe an issue in plain text. AI structures it into a proper GitHub issue with title and body.
+Describe an issue in plain text. AI structures it into a proper GitHub issue with title, body, and labels, shows a preview, and files it after you confirm.
 
 ```bash
 rig create-issue
 ```
 
-### `rig queue`
+### `rig story`
 
-Display the prioritized issue backlog.
+Paste a planning spec or PRD. AI creates a parent story issue plus atomic child issues, each sized for one branch and one PR. You confirm before each step.
 
 ```bash
-rig queue
-rig queue --phase "Phase 1: MVP" --component backend --limit 20
+rig story
 ```
 
-### `rig status`
+### `rig pr`
 
-Show current pipeline state (issue, stage, branch, progress).
-
-### `rig reset`
-
-Clear pipeline state. Keeps the branch and code intact.
-
-### `rig rollback`
-
-Undo everything: close PR, delete branch (local + remote), clear state.
+Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history.
 
 ```bash
-rig rollback
-rig rollback --no-close-pr
+rig pr
+rig pr --issue 42
 ```
 
-### `rig bootstrap`
+### `rig setup-labels`
 
-Set up test infrastructure (Vitest, Testing Library, MSW).
+Create rig's label set on the GitHub repo. Safe to run more than once.
 
 ```bash
-rig bootstrap
-rig bootstrap --component frontend
+rig setup-labels
 ```
 
 ---
 
-## Agent Providers
+## Configuration
 
-**Binary** (default): Spawns the official `claude` CLI binary. Works with a Claude Max subscription. No API key needed.
+Create `.rig.yml` in your project root. All fields are optional; missing values use defaults.
+
+```yaml
+agent:
+  provider: binary   # 'binary' (Claude CLI, default) or 'sdk' (API key)
+  timeout: 120       # seconds per AI call
+
+git:
+  base_branch: main  # auto-detected if omitted (main or master)
+
+defaultLabels: []    # labels added to every created issue
+
+verbose: false
+```
+
+---
+
+## AI Providers
+
+**Binary** (default): Spawns the official `claude` CLI. Works with a Claude subscription. No API key needed.
 
 **SDK**: Uses the Anthropic API directly. Requires `ANTHROPIC_API_KEY`. Set `provider: sdk` in `.rig.yml`.
+
+AI is used only for text generation — issue bodies and spec decomposition. rig never runs an agent on your code.
 
 ---
 
