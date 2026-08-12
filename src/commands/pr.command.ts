@@ -169,8 +169,9 @@ export class PrCommand extends BaseCommand {
    * - "42-slug" or "feat/42-slug"
    *
    * Bare-number prefixes that look like dates are rejected: numbers with a
-   * leading zero ("0815-hotfix") and 4-digit years 1900-2099
-   * ("2025-cleanup", "2025-08-cleanup"). For those branches, pass --issue.
+   * leading zero ("0815-hotfix"), 4-digit years 1900-2099 ("2025-cleanup"),
+   * and two all-digit segments in a row ("8-15-hotfix", "2025-08-cleanup").
+   * For those branches, pass --issue.
    *
    * @param branch - The branch name
    * @returns The issue number, or null if none found
@@ -187,7 +188,8 @@ export class PrCommand extends BaseCommand {
       const value = parseInt(digits, 10);
       const hasLeadingZero = digits.length > 1 && digits.startsWith('0');
       const looksLikeYear = digits.length === 4 && value >= 1900 && value <= 2099;
-      if (!hasLeadingZero && !looksLikeYear) {
+      const dateLikePair = new RegExp(`(?:^|/)${digits}[-_]\\d+(?:[-_]|$)`).test(branch);
+      if (!hasLeadingZero && !looksLikeYear && !dateLikePair) {
         return value;
       }
     }

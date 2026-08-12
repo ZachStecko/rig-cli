@@ -306,6 +306,17 @@ export class AuthService {
       expect(result[0].labels).not.toContain('invalid-label');
     });
 
+    it('filters reserved labels from child issues', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Details.', labels: ['backend', 'story', 'rig-created', 'feature'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].labels).toEqual(['backend', 'feature']);
+    });
+
     it('includes parent issue number in prompt', async () => {
       const mockResponse = JSON.stringify([
         { title: 'Add auth', body: 'Parent story: #42\n\nDetails.', labels: [] },

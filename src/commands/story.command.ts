@@ -184,6 +184,16 @@ export class StoryCommand extends BaseCommand {
     for (const num of createdNumbers) {
       console.log(`  Child:  https://github.com/${repoName}/issues/${num}`);
     }
+
+    const failedCount = childIssues.length - createdNumbers.length;
+    if (failedCount > 0) {
+      this.logger.warn(`${failedCount} of ${childIssues.length} child issues failed to create.`);
+    }
+    if (createdNumbers.length === 0) {
+      this.logger.error(`No child issues were created for story #${parentNumber}.`);
+      process.exit(1);
+      return; // For testing
+    }
     this.logger.success(`Created ${createdNumbers.length} child issues for story #${parentNumber}`);
   }
 

@@ -144,6 +144,8 @@ describe('PrCommand', () => {
       ['2025-cleanup'],
       ['feat/2025-cleanup'],
       ['0815-hotfix'],
+      ['8-15-hotfix'],
+      ['12-25-freeze'],
     ])('does not treat date-like branch %s as an issue number', async (branch) => {
       vi.mocked(mockGit.currentBranch).mockResolvedValue(branch);
 

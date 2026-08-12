@@ -134,9 +134,11 @@ Always include one component label (${componentList}) and one type label (${type
       structured.title = structured.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
     }
 
-    // Filter labels to only valid ones
+    // Keep only valid, non-reserved labels; the LLM may ignore the pick list.
     if (structured.labels) {
-      structured.labels = structured.labels.filter(l => isValidLabel(l));
+      structured.labels = structured.labels.filter(
+        l => isValidLabel(l) && !RESERVED_LABELS.has(l)
+      );
     }
 
     return structured;
@@ -221,7 +223,9 @@ Respond with ONLY a valid JSON array of objects, each with "title", "body", and 
         issue.title = issue.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
       }
       if (issue.labels) {
-        issue.labels = issue.labels.filter(l => isValidLabel(l));
+        issue.labels = issue.labels.filter(
+          l => isValidLabel(l) && !RESERVED_LABELS.has(l)
+        );
       }
     }
 
