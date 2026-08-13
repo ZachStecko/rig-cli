@@ -1,6 +1,9 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LLMService, StructuredIssue } from '../../src/services/llm.service.js';
 import { LLMProvider } from '../../src/services/llm-provider.js';
+import { writeFile, mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 describe('LLMService', () => {
   let llmService: LLMService;
@@ -352,6 +355,90 @@ export class AuthService {
 
       const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
       expect(promptArg).toContain('Do not add features, enhancements, or nice-to-haves beyond what the spec explicitly details');
+    });
+  });
+
+  describe('style guide injection', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await mkdtemp(join(tmpdir(), 'rig-style-'));
+    });
+
+    afterEach(async () => {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    });
+
+    const validResponse = JSON.stringify({ title: 'Add auth', body: 'Details.', labels: [] });
+    const validArrayResponse = JSON.stringify([{ title: 'Add auth', body: 'Details.', labels: [] }]);
+
+    it('injects the style file into the structureIssue prompt', async () => {
+      const styleFile = join(tempDir, 'style.md');
+      await writeFile(styleFile, 'Use short sentences. No idioms.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: styleFile }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('STYLE GUIDE (mandatory)');
+      expect(promptArg).toContain('Use short sentences. No idioms.');
+    });
+
+    it('injects the style file into the decomposeStory prompt', async () => {
+      const styleFile = join(tempDir, 'style.md');
+      await writeFile(styleFile, 'Use short sentences. No idioms.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: styleFile }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validArrayResponse);
+
+      await service.decomposeStory('spec', 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('STYLE GUIDE (mandatory)');
+      expect(promptArg).toContain('Use short sentences. No idioms.');
+    });
+
+    it('resolves relative style paths against the project root', async () => {
+      await writeFile(join(tempDir, 'style.md'), 'Relative rules here.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: 'style.md' }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('Relative rules here.');
+    });
+
+    it('warns and continues when the style file is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: 'missing.md' }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      const result = await service.structureIssue('Add login');
+
+      expect(result.title).toBe('Add auth');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('missing.md'));
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).not.toContain('STYLE GUIDE');
+      warnSpy.mockRestore();
+    });
+
+    it('omits the style section when no style_file is configured', async () => {
+      const service = new LLMService(mockAgent, { agent: {}, git: {} }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).not.toContain('STYLE GUIDE');
     });
   });
 });

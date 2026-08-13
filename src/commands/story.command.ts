@@ -33,7 +33,7 @@ export class StoryCommand extends BaseCommand {
     projectRoot?: string
   ) {
     super(logger, config, git, github, guard, projectRoot);
-    this.llm = new LLMService(undefined, this.config.get());
+    this.llm = new LLMService(undefined, this.config.get(), this.projectRoot);
   }
 
   async execute(): Promise<void> {

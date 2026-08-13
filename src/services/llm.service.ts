@@ -1,3 +1,6 @@
+import { readFile } from 'fs/promises';
+import { resolve } from 'path';
+import { homedir } from 'os';
 import { LLMProvider, createProvider } from './llm-provider.js';
 import { RigConfig } from '../types/config.types.js';
 import {
@@ -45,9 +48,47 @@ const GITHUB_TITLE_MAX_LENGTH = 256;
  */
 export class LLMService {
   private agent: LLMProvider;
+  private config?: RigConfig;
+  private projectRoot: string;
+  private stylePromise?: Promise<string>;
 
-  constructor(agent?: LLMProvider, config?: RigConfig) {
+  constructor(agent?: LLMProvider, config?: RigConfig, projectRoot?: string) {
     this.agent = agent ?? createProvider(config);
+    this.config = config;
+    this.projectRoot = projectRoot ?? process.cwd();
+  }
+
+  /**
+   * Loads the configured style guide as a prompt section, cached for the
+   * process lifetime. Returns '' when no style_file is configured; warns
+   * and returns '' when the file cannot be read.
+   */
+  private loadStyleSection(): Promise<string> {
+    this.stylePromise ??= (async () => {
+      const styleFile = this.config?.style_file;
+      if (!styleFile) {
+        return '';
+      }
+      const path = styleFile.startsWith('~/')
+        ? resolve(homedir(), styleFile.slice(2))
+        : resolve(this.projectRoot, styleFile);
+      try {
+        const content = await readFile(path, 'utf-8');
+        return `
+
+STYLE GUIDE (mandatory)
+Apply these writing rules to every generated title and body. Where they
+conflict with tone or formatting guidance above, the style guide wins.
+Structural requirements (required sections, JSON output format) are not
+affected by the style guide.
+
+${content.trim()}`;
+      } catch {
+        console.warn(`Warning: style_file '${styleFile}' could not be read; continuing without it.`);
+        return '';
+      }
+    })();
+    return this.stylePromise;
   }
 
   /**
@@ -80,13 +121,14 @@ export class LLMService {
 
     // Build the prompt for structuring the issue, with JSON output instruction
     const prompt = this.buildIssuePrompt(rawDescription);
+    const styleSection = await this.loadStyleSection();
     // Derive the label vocabulary from labels.types.ts so the prompt cannot
     // drift from the source of truth.
     const componentList = Object.values(COMPONENT_LABELS).join(', ');
     const typeList = Object.values(TYPE_LABELS)
       .filter(label => label !== TYPE_LABELS.STORY)
       .join(', ');
-    const jsonPrompt = `${prompt}
+    const jsonPrompt = `${prompt}${styleSection}
 
 Respond with ONLY a valid JSON object with "title", "body", and "labels" fields. No markdown fences, no explanation.
 
@@ -162,6 +204,7 @@ Always include one component label (${componentList}) and one type label (${type
       throw new Error(auth.error || 'Agent is not available. Check your configuration.');
     }
 
+    const styleSection = await this.loadStyleSection();
     const componentList = Object.values(COMPONENT_LABELS).join(', ');
     const typeList = Object.values(TYPE_LABELS)
       .filter(label => label !== TYPE_LABELS.STORY)
@@ -181,6 +224,7 @@ RULES:
 - Use the same issue body format: ## Problem / Motivation, ## Implementation Details, ## Testing Strategy, ## Acceptance Criteria. Skip sections that don't apply.
 - Titles: imperative, 50-80 chars, with component prefix if clear (cli: / api: / ui: / etc.)
 - No filler prose. Senior engineer to senior engineer tone.
+${styleSection}
 
 For "labels" on each issue, pick 1-4 from this list: ${pickableLabels().join(', ')}
 Always include one component label (${componentList}) and one type label (${typeList}).

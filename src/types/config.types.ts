@@ -29,6 +29,12 @@ export interface RigConfig {
   verbose?: boolean;
   /** Default labels to apply when creating issues via rig create-issue (default: []) */
   defaultLabels?: ValidLabel[];
+  /**
+   * Path to a markdown style guide injected into every AI prompt, so
+   * generated issue titles and bodies follow your writing rules.
+   * Relative to the project root; '~/' expands to the home directory.
+   */
+  style_file?: string;
 }
 
 /**

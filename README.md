@@ -83,6 +83,11 @@ git:
 
 defaultLabels: []    # labels added to every created issue
 
+# Optional: a markdown style guide injected into every AI prompt, so
+# generated issues follow your writing rules. Relative to the project
+# root; ~/ expands to your home directory.
+style_file: ~/style/writing-rules.md
+
 verbose: false
 ```
 
