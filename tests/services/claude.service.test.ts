@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ClaudeService } from '../../src/services/claude.service.js';
 import { EventEmitter } from 'events';
 
-// Mock shell exec (used by isInstalled and promptBuffered)
+// Mock shell exec (used by isInstalled)
 const mockExec = vi.fn();
 vi.mock('../../src/utils/shell.js', () => ({
   exec: (...args: any[]) => mockExec(...args),
 }));
 
-// Mock child_process spawn (used by run and promptStreaming)
+// Mock child_process spawn (used by promptBuffered and promptStreaming)
 const mockSpawn = vi.fn();
 vi.mock('child_process', () => ({
   spawn: (...args: any[]) => mockSpawn(...args),
@@ -73,19 +73,33 @@ describe('ClaudeService', () => {
       }
     });
 
-    it('sends prompt via shell exec and returns text response', async () => {
+    it('spawns claude without a shell and returns text response', async () => {
       const jsonResponse = JSON.stringify({
         content: [{ type: 'text', text: 'Hello world' }],
       });
 
-      mockExec.mockResolvedValue({ exitCode: 0, stdout: jsonResponse, stderr: '' });
+      mockSpawn.mockReturnValue(createMockChild({ stdout: jsonResponse }));
 
       const result = await service.prompt('test prompt');
       expect(result).toBe('Hello world');
-      expect(mockExec).toHaveBeenCalledWith(
-        'claude -p "test prompt" --output-format json',
-        { timeout: 120000 }
+      expect(mockSpawn).toHaveBeenCalledWith(
+        'claude',
+        ['-p', 'test prompt', '--output-format', 'json'],
+        { stdio: ['ignore', 'pipe', 'pipe'] }
       );
+    });
+
+    it('passes shell metacharacters through literally', async () => {
+      const jsonResponse = JSON.stringify({
+        content: [{ type: 'text', text: 'ok' }],
+      });
+      mockSpawn.mockReturnValue(createMockChild({ stdout: jsonResponse }));
+
+      const prompt = 'run `make check` and use "$HOME" \'quotes\'';
+      await service.prompt(prompt);
+
+      const args = mockSpawn.mock.calls[0][1];
+      expect(args[1]).toBe(prompt);
     });
 
     it('throws when in nested Claude session', async () => {
@@ -94,12 +108,17 @@ describe('ClaudeService', () => {
     });
 
     it('throws when command fails', async () => {
-      mockExec.mockResolvedValue({ exitCode: 1, stdout: '', stderr: 'error output' });
-      await expect(service.prompt('test')).rejects.toThrow('Claude prompt failed');
+      mockSpawn.mockReturnValue(createMockChild({ exitCode: 1, stderr: 'error output' }));
+      await expect(service.prompt('test')).rejects.toThrow('Claude prompt failed: error output');
+    });
+
+    it('throws when spawn fails', async () => {
+      mockSpawn.mockReturnValue(createMockChild({ error: new Error('ENOENT') }));
+      await expect(service.prompt('test')).rejects.toThrow('Failed to spawn claude');
     });
 
     it('returns raw stdout when JSON parsing fails', async () => {
-      mockExec.mockResolvedValue({ exitCode: 0, stdout: 'raw text', stderr: '' });
+      mockSpawn.mockReturnValue(createMockChild({ stdout: 'raw text' }));
       const result = await service.prompt('test');
       expect(result).toBe('raw text');
     });

@@ -45,20 +45,44 @@ export class ClaudeService {
   }
 
   /**
-   * Buffered prompt — uses shell exec with --output-format json.
-   * Reliable: waits for full output before resolving.
+   * Buffered prompt — uses --output-format json and waits for full output.
+   *
+   * Spawns without a shell so backticks, quotes, and dollar signs in the
+   * prompt reach claude literally instead of being shell-interpreted.
    */
-  private async promptBuffered(prompt: string, timeoutMs: number): Promise<string> {
-    const result = await exec(
-      `claude -p ${JSON.stringify(prompt)} --output-format json`,
-      { timeout: timeoutMs }
-    );
+  private promptBuffered(prompt: string, timeoutMs: number): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const child = spawn('claude', ['-p', prompt, '--output-format', 'json'], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
 
-    if (result.exitCode !== 0) {
-      throw new Error(`Claude prompt failed: ${result.stderr}`);
-    }
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+      child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
 
-    return this.parseJsonResponse(result.stdout);
+      // timeoutMs <= 0 means no timeout
+      const timer = timeoutMs > 0
+        ? setTimeout(() => {
+            child.kill('SIGTERM');
+            reject(new Error(`Claude prompt timed out after ${timeoutMs / 1000}s`));
+          }, timeoutMs)
+        : null;
+
+      child.once('error', (error) => {
+        if (timer) clearTimeout(timer);
+        reject(new Error(`Failed to spawn claude: ${error.message}`));
+      });
+
+      child.once('close', (code) => {
+        if (timer) clearTimeout(timer);
+        if (code !== 0) {
+          reject(new Error(`Claude prompt failed: ${stderr.trim()}`));
+          return;
+        }
+        resolve(this.parseJsonResponse(stdout));
+      });
+    });
   }
 
   /**
@@ -111,18 +135,21 @@ export class ClaudeService {
         process.stderr.write(chunk.toString());
       });
 
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        reject(new Error(`Claude prompt timed out after ${timeoutMs / 1000}s`));
-      }, timeoutMs);
+      // timeoutMs <= 0 means no timeout
+      const timer = timeoutMs > 0
+        ? setTimeout(() => {
+            child.kill('SIGTERM');
+            reject(new Error(`Claude prompt timed out after ${timeoutMs / 1000}s`));
+          }, timeoutMs)
+        : null;
 
       child.once('error', (error) => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         reject(new Error(`Failed to spawn claude: ${error.message}`));
       });
 
       child.once('close', (code) => {
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         // Parse any remaining buffer
         if (buffer.trim()) {
           try {
