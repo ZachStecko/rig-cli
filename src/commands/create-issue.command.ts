@@ -46,7 +46,7 @@ export class CreateIssueCommand extends BaseCommand {
     this.logger.header('Create GitHub Issue');
     console.log('');
 
-    this.logger.config('Agent provider', rigConfig.agent.provider || 'binary');
+    this.logger.config('Agent provider', rigConfig.agent.provider || 'kimi');
     this.logger.config('Verbose', verbose);
     const defaultLabels = rigConfig.defaultLabels || [];
 
@@ -89,11 +89,11 @@ export class CreateIssueCommand extends BaseCommand {
     // Structure the issue using LLM
     let structured;
     try {
-      this.logger.command('claude -p <prompt> --output-format json');
+      this.logger.command(`${this.llm.providerName} chat/completions`);
       const startTime = Date.now();
       structured = await this.logger.spinner(
         this.llm.structureIssue(rawDescription),
-        'Structuring your issue with Claude...'
+        `Structuring your issue with ${this.llm.providerName}...`
       );
       this.logger.timing('Issue structuring', Date.now() - startTime);
     } catch (error) {

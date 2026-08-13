@@ -4,9 +4,11 @@ import { ValidLabel } from './labels.types.js';
  * Configuration for the LLM provider used to structure issues and PRs.
  */
 export interface AgentConfig {
-  /** Agent provider: 'binary' uses the Claude CLI (works with Max subscription), 'sdk' uses the Anthropic API (requires ANTHROPIC_API_KEY) (default: 'binary') */
-  provider?: 'sdk' | 'binary';
-  /** Timeout in seconds for Claude prompt calls (default: 120) */
+  /** LLM provider for text generation: 'kimi' uses the Moonshot API (requires MOONSHOT_API_KEY) (default: 'kimi') */
+  provider?: 'kimi';
+  /** Model ID to request from the provider (default: provider-specific, e.g. 'kimi-k3') */
+  model?: string;
+  /** Timeout in seconds for LLM prompt calls (default: 120) */
   timeout?: number;
 }
 
@@ -42,7 +44,7 @@ export interface RigConfig {
  * These are used when .rig.yml is missing or fields are omitted.
  */
 export const DEFAULT_CONFIG: RigConfig = {
-  agent: { provider: 'binary', timeout: 120 },
+  agent: { provider: 'kimi', timeout: 120 },
   git: {},
   verbose: false,
 };

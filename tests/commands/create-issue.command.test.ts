@@ -40,7 +40,7 @@ describe('CreateIssueCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { provider: 'binary' }, verbose: false }),
+      get: vi.fn().mockReturnValue({ agent: { provider: 'kimi' }, verbose: false }),
     } as any;
 
     mockGit = {
@@ -394,7 +394,7 @@ export class AuthService {
       const defaultLabels = ['rig-generated', 'enhancement'];
 
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels,
       } as any);
@@ -443,7 +443,7 @@ export class AuthService {
       const mockRepoName = 'owner/repo';
 
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels: [],
       } as any);
@@ -492,7 +492,7 @@ export class AuthService {
       const mockRepoName = 'owner/repo';
 
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
       } as any);
 
@@ -534,7 +534,7 @@ export class AuthService {
       const invalidLabels = ['invalid-label', 'foo', 'bar'];
 
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels: invalidLabels,
       } as any);
@@ -571,7 +571,7 @@ export class AuthService {
       const validLabels = ['backend', 'enhancement', 'P0', 'Phase 1: MVP', 'rig-generated'];
 
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels: validLabels,
       } as any);
@@ -614,7 +614,7 @@ export class AuthService {
       const mixedLabels = ['backend', 'invalid-label', 'enhancement', 'foo'];
 
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels: mixedLabels,
       } as any);

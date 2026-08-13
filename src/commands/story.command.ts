@@ -70,11 +70,11 @@ export class StoryCommand extends BaseCommand {
     // Structure parent story
     let parentIssue;
     try {
-      this.logger.command('claude -p <prompt> --output-format json');
+      this.logger.command(`${this.llm.providerName} chat/completions`);
       const startTime = Date.now();
       parentIssue = await this.logger.spinner(
         this.llm.structureIssue(specContent),
-        'Structuring parent story with Claude...'
+        `Structuring parent story with ${this.llm.providerName}...`
       );
       this.logger.timing('Story structuring', Date.now() - startTime);
     } catch (error) {
@@ -123,7 +123,7 @@ export class StoryCommand extends BaseCommand {
     // Decompose into child issues
     let childIssues;
     try {
-      this.logger.command('claude -p <prompt> --output-format json');
+      this.logger.command(`${this.llm.providerName} chat/completions`);
       const startTime = Date.now();
       childIssues = await this.logger.spinner(
         this.llm.decomposeStory(specContent, parentNumber),

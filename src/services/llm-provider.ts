@@ -1,5 +1,3 @@
-import { query } from '@anthropic-ai/claude-agent-sdk';
-import { ClaudeService } from './claude.service.js';
 import { RigConfig } from '../types/config.types.js';
 
 /**
@@ -9,7 +7,7 @@ export interface AuthStatus {
   /** Whether the provider is authenticated */
   authenticated: boolean;
   /** How the provider is authenticated */
-  method?: 'api_key' | 'subscription';
+  method?: 'api_key';
   /** Error message if not authenticated */
   error?: string;
 }
@@ -28,128 +26,150 @@ export interface LLMProvider {
   prompt(text: string): Promise<string>;
 }
 
+/** Per-call options every API provider accepts. */
+export interface ApiProviderOptions {
+  /** Model ID to request; falls back to the provider's default */
+  model?: string;
+  /** Milliseconds before a prompt call is aborted; <= 0 disables (default: 120s) */
+  timeoutMs?: number;
+}
+
+/** Vendor-specific settings a subclass passes to the base constructor. */
+interface ApiProviderSettings {
+  name: string;
+  baseUrl: string;
+  apiKeyEnvVar: string;
+  model: string;
+  timeoutMs?: number;
+}
+
 /**
- * LLM provider backed by the Claude Code CLI (`claude` binary).
+ * Base class for providers that speak the OpenAI chat-completions protocol.
  *
- * Works with a Claude subscription at no extra API cost.
+ * Most model vendors (Moonshot/Kimi, DeepSeek, OpenAI, ...) expose this
+ * request/response shape, so adding a vendor is a small subclass that
+ * supplies a name, base URL, API-key env var, and default model.
  */
-export class BinaryProvider implements LLMProvider {
-  readonly name = 'Claude CLI';
-
-  private claudeService: ClaudeService;
-  private verbose: boolean;
+export class OpenAICompatProvider implements LLMProvider {
+  readonly name: string;
+  private baseUrl: string;
+  private apiKeyEnvVar: string;
+  private model: string;
   private timeoutMs: number;
-  private installedPromise?: Promise<boolean>;
 
-  constructor(verbose?: boolean, timeoutMs?: number) {
-    this.claudeService = new ClaudeService();
-    this.verbose = verbose ?? false;
-    this.timeoutMs = timeoutMs ?? 120_000;
+  constructor(settings: ApiProviderSettings) {
+    this.name = settings.name;
+    this.baseUrl = settings.baseUrl.replace(/\/$/, '');
+    this.apiKeyEnvVar = settings.apiKeyEnvVar;
+    this.model = settings.model;
+    this.timeoutMs = settings.timeoutMs ?? 120_000;
+  }
+
+  private get apiKey(): string | undefined {
+    return process.env[this.apiKeyEnvVar];
   }
 
   async isAvailable(): Promise<boolean> {
-    // Memoized: whether the binary is installed cannot change mid-run, and
-    // one command may ask several times (availability check + per-call auth).
-    this.installedPromise ??= this.claudeService.isInstalled();
-    return this.installedPromise;
+    return !!this.apiKey;
   }
 
   async checkAuth(): Promise<AuthStatus> {
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (this.apiKey) {
       return { authenticated: true, method: 'api_key' };
     }
-
-    // The claude CLI has no cheap way to verify subscription login, so an
-    // installed binary is treated as authenticated. A logged-out CLI fails
-    // at prompt() time; commands check availability before taking input so
-    // that failure surfaces early rather than after the user types.
-    const installed = await this.isAvailable();
-    if (installed) {
-      return { authenticated: true, method: 'subscription' };
-    }
-
     return {
       authenticated: false,
-      error: 'Not authenticated. Run `claude login` or set ANTHROPIC_API_KEY',
+      error: `Not authenticated. Set the ${this.apiKeyEnvVar} environment variable`,
     };
   }
 
   async prompt(text: string): Promise<string> {
-    return this.claudeService.prompt(text, {
-      verbose: this.verbose,
-      timeoutMs: this.timeoutMs,
-    });
+    const auth = await this.checkAuth();
+    if (!auth.authenticated) {
+      throw new Error(auth.error);
+    }
+
+    const controller = new AbortController();
+    const timer = this.timeoutMs > 0
+      ? setTimeout(() => controller.abort(), this.timeoutMs)
+      : null;
+
+    try {
+      const response = await fetch(`${this.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: [{ role: 'user', content: text }],
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const body = await response.text().catch(() => '');
+        const detail = body.trim().slice(0, 500) || response.statusText;
+        throw new Error(`${this.name} API error (HTTP ${response.status}): ${detail}`);
+      }
+
+      const data = (await response.json()) as {
+        choices?: { message?: { content?: string } }[];
+      };
+      const content = data.choices?.[0]?.message?.content;
+      if (typeof content !== 'string' || !content.trim()) {
+        throw new Error(`${this.name} returned an empty response`);
+      }
+      return content;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(`${this.name} prompt timed out after ${this.timeoutMs / 1000}s`);
+      }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
 
-const SDK_MODEL = 'claude-sonnet-4-5-20250929';
-
 /**
- * LLM provider backed by the Claude Agent SDK.
+ * Moonshot AI's Kimi models via the platform API.
  *
- * Requires the ANTHROPIC_API_KEY environment variable.
+ * Requires the MOONSHOT_API_KEY environment variable
+ * (create a key at https://platform.moonshot.ai).
  */
-export class SdkProvider implements LLMProvider {
-  readonly name = 'Claude SDK';
+export class KimiProvider extends OpenAICompatProvider {
+  static readonly DEFAULT_MODEL = 'kimi-k3';
 
-  async isAvailable(): Promise<boolean> {
-    return !!process.env.ANTHROPIC_API_KEY;
-  }
-
-  async checkAuth(): Promise<AuthStatus> {
-    if (process.env.ANTHROPIC_API_KEY) {
-      return { authenticated: true, method: 'api_key' };
-    }
-
-    return {
-      authenticated: false,
-      error: 'Not authenticated. Set ANTHROPIC_API_KEY environment variable',
-    };
-  }
-
-  async prompt(text: string): Promise<string> {
-    const responses: string[] = [];
-
-    for await (const message of query({
-      prompt: text,
-      options: {
-        model: SDK_MODEL,
-        maxTurns: 1,
-        tools: [],
-        permissionMode: 'bypassPermissions' as any,
-        allowDangerouslySkipPermissions: true,
-      },
-    })) {
-      if (message.type === 'assistant' && message.message?.content) {
-        for (const block of message.message.content) {
-          if ('text' in block) {
-            responses.push(block.text);
-          }
-        }
-      }
-    }
-
-    return responses.join('\n');
+  constructor(options?: ApiProviderOptions) {
+    super({
+      name: 'Kimi',
+      baseUrl: 'https://api.moonshot.ai/v1',
+      apiKeyEnvVar: 'MOONSHOT_API_KEY',
+      model: options?.model ?? KimiProvider.DEFAULT_MODEL,
+      timeoutMs: options?.timeoutMs,
+    });
   }
 }
 
 /**
  * Creates an LLM provider based on the provider setting in config.
  *
- * @param config - Optional RigConfig; defaults to 'binary' provider if omitted
+ * @param config - Optional RigConfig; defaults to 'kimi' provider if omitted
  * @returns An LLMProvider matching the configured provider
  */
 export function createProvider(config?: RigConfig): LLMProvider {
-  const provider = config?.agent?.provider ?? 'binary';
-  const verbose = config?.verbose ?? false;
-  const timeoutMs = (config?.agent?.timeout ?? 120) * 1000;
+  const provider = config?.agent?.provider ?? 'kimi';
+  const options: ApiProviderOptions = {
+    model: config?.agent?.model,
+    timeoutMs: (config?.agent?.timeout ?? 120) * 1000,
+  };
   switch (provider) {
-    case 'binary':
-      return new BinaryProvider(verbose, timeoutMs);
-    case 'sdk':
-      return new SdkProvider();
+    case 'kimi':
+      return new KimiProvider(options);
     default:
-      console.warn(`Unknown agent provider: ${provider}. Falling back to 'binary'.`);
-      return new BinaryProvider(verbose, timeoutMs);
+      console.warn(`Unknown agent provider: ${provider}. Falling back to 'kimi'.`);
+      return new KimiProvider(options);
   }
 }

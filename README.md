@@ -22,7 +22,7 @@ For a full spec or PRD, use **`rig story`** instead of `create-issue`. It create
 
 ## Install
 
-**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: the [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`) or an `ANTHROPIC_API_KEY`.
+**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: a `MOONSHOT_API_KEY` (create one at [platform.moonshot.ai](https://platform.moonshot.ai)).
 
 ```bash
 npm install -g rig-cli
@@ -75,7 +75,8 @@ Create `.rig.yml` in your project root. All fields are optional; missing values 
 
 ```yaml
 agent:
-  provider: binary   # 'binary' (Claude CLI, default) or 'sdk' (API key)
+  provider: kimi     # 'kimi' (Moonshot API, default)
+  model: kimi-k3     # model ID to request (default: kimi-k3)
   timeout: 120       # seconds per AI call
 
 git:
@@ -95,9 +96,9 @@ verbose: false
 
 ## AI Providers
 
-**Binary** (default): Spawns the official `claude` CLI. Works with a Claude subscription. No API key needed.
+**Kimi** (default): Moonshot AI's Kimi models over the OpenAI-compatible chat-completions API. Requires `MOONSHOT_API_KEY`. Defaults to `kimi-k3`; override with `agent.model` in `.rig.yml`.
 
-**SDK**: Uses the Anthropic API directly. Requires `ANTHROPIC_API_KEY`. Set `provider: sdk` in `.rig.yml`.
+Providers are small subclasses of `OpenAICompatProvider` (`src/services/llm-provider.ts`) — adding another vendor is a name, base URL, API-key env var, and default model.
 
 AI is used only for text generation — issue bodies and spec decomposition. rig never runs an agent on your code.
 
@@ -105,7 +106,7 @@ AI is used only for text generation — issue bodies and spec decomposition. rig
 
 ## Disclaimer
 
-rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Anthropic. You must have your own Claude subscription or API key and comply with [Anthropic's Terms of Service](https://www.anthropic.com/legal/consumer-terms).
+rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Moonshot AI. You must have your own API key and comply with your model provider's terms of service.
 
 ## License
 

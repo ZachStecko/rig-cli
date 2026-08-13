@@ -41,9 +41,9 @@ export interface StructuredIssue {
 const GITHUB_TITLE_MAX_LENGTH = 256;
 
 /**
- * LLMService handles text processing tasks using Claude.
+ * LLMService handles text processing tasks using the configured LLM provider.
  *
- * Uses the configured agent's prompt() method for simple text completion
+ * Uses the provider's prompt() method for simple text completion
  * tasks like structuring issue descriptions.
  */
 export class LLMService {
@@ -92,8 +92,7 @@ ${content.trim()}`;
   }
 
   /**
-   * Checks if the configured provider is available: the claude CLI is
-   * installed (binary provider) or ANTHROPIC_API_KEY is set (sdk provider).
+   * Checks if the configured provider is available (its API key is set).
    *
    * @returns true if the provider is available, false otherwise
    */
@@ -101,10 +100,15 @@ ${content.trim()}`;
     return this.agent.isAvailable();
   }
 
+  /** Display name of the underlying provider (e.g. 'Kimi'). */
+  get providerName(): string {
+    return this.agent.name;
+  }
+
   /**
    * Structures a raw issue description into a proper GitHub issue format.
    *
-   * Takes user's raw description and uses Claude to create a well-structured
+   * Takes user's raw description and uses the LLM to create a well-structured
    * issue with a clear title and body. The output is written in a direct,
    * technical style without excessive formatting.
    *
@@ -135,11 +139,10 @@ Respond with ONLY a valid JSON object with "title", "body", and "labels" fields.
 For "labels", pick 1-4 from this list based on the issue content: ${pickableLabels().join(', ')}
 Always include one component label (${componentList}) and one type label (${typeList}).`;
 
-    // Call Claude via the provider
     const responseText = await this.agent.prompt(jsonPrompt);
 
-    // Extract JSON from the response — Claude may include preamble text
-    // before the actual JSON object when acting as an agent.
+    // Extract JSON from the response — the model may include preamble text
+    // or markdown fences around the actual JSON object.
     let structured: StructuredIssue;
     try {
       // Try parsing the whole response first (fast path)
@@ -189,7 +192,7 @@ Always include one component label (${componentList}) and one type label (${type
   /**
    * Decomposes a planning spec into atomic child issues.
    *
-   * Takes a full spec/PRD content and a parent issue number, then uses Claude
+   * Takes a full spec/PRD content and a parent issue number, then uses the LLM
    * to break it down into small, independently implementable GitHub issues.
    * Each child issue body includes a reference back to the parent story.
    *

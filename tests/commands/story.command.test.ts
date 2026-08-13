@@ -40,7 +40,7 @@ describe('StoryCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { provider: 'binary' }, verbose: false }),
+      get: vi.fn().mockReturnValue({ agent: { provider: 'kimi' }, verbose: false }),
     } as any;
 
     mockGit = {
@@ -346,7 +346,7 @@ describe('StoryCommand', () => {
 
     it('includes default labels from config on parent and child issues', async () => {
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels: ['P1'],
       } as any);
