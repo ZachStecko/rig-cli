@@ -122,6 +122,33 @@ describe('ClaudeService', () => {
       const result = await service.prompt('test');
       expect(result).toBe('raw text');
     });
+
+    it('extracts text from the result-shaped CLI response', async () => {
+      const jsonResponse = JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: false,
+        result: 'Hello from result field',
+      });
+      mockSpawn.mockReturnValue(createMockChild({ stdout: jsonResponse }));
+
+      const result = await service.prompt('test');
+      expect(result).toBe('Hello from result field');
+    });
+
+    it('throws when the CLI reports is_error', async () => {
+      const jsonResponse = JSON.stringify({
+        type: 'result',
+        subtype: 'error',
+        is_error: true,
+        result: 'usage limit reached',
+      });
+      mockSpawn.mockReturnValue(createMockChild({ stdout: jsonResponse }));
+
+      await expect(service.prompt('test')).rejects.toThrow(
+        'Claude returned an error: usage limit reached'
+      );
+    });
   });
 
   describe('prompt (streaming, verbose)', () => {

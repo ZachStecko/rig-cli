@@ -83,7 +83,11 @@ export class ClaudeService {
           reject(new Error(`Claude prompt failed: ${detail}`));
           return;
         }
-        resolve(this.parseJsonResponse(stdout));
+        try {
+          resolve(this.parseJsonResponse(stdout));
+        } catch (error) {
+          reject(error);
+        }
       });
     });
   }
@@ -187,20 +191,36 @@ export class ClaudeService {
 
   /**
    * Parse a JSON response from claude --output-format json.
+   *
+   * The current CLI returns { type: 'result', is_error, result: '<text>' }.
+   * Older shapes (content block array, text field) are kept as fallbacks.
    */
   private parseJsonResponse(stdout: string): string {
+    let response: any;
     try {
-      const response = JSON.parse(stdout);
-      if (response.content && Array.isArray(response.content)) {
-        const textBlocks = response.content
-          .filter((block: any) => block.type === 'text')
-          .map((block: any) => block.text);
-        return textBlocks.join('\n');
-      }
-      return response.text || response.content || '';
+      response = JSON.parse(stdout);
     } catch {
       return stdout.trim();
     }
+
+    if (response.is_error) {
+      throw new Error(
+        `Claude returned an error: ${typeof response.result === 'string' ? response.result : JSON.stringify(response)}`
+      );
+    }
+
+    if (typeof response.result === 'string') {
+      return response.result;
+    }
+
+    if (response.content && Array.isArray(response.content)) {
+      const textBlocks = response.content
+        .filter((block: any) => block.type === 'text')
+        .map((block: any) => block.text);
+      return textBlocks.join('\n');
+    }
+
+    return response.text || response.content || '';
   }
 
 }
