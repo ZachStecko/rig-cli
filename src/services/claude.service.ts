@@ -77,7 +77,10 @@ export class ClaudeService {
       child.once('close', (code) => {
         if (timer) clearTimeout(timer);
         if (code !== 0) {
-          reject(new Error(`Claude prompt failed: ${stderr.trim()}`));
+          // The CLI sometimes reports errors on stdout (as JSON) with an
+          // empty stderr; include whichever stream has content.
+          const detail = stderr.trim() || stdout.trim().slice(0, 500) || `exit code ${code}`;
+          reject(new Error(`Claude prompt failed: ${detail}`));
           return;
         }
         resolve(this.parseJsonResponse(stdout));
