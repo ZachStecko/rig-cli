@@ -441,4 +441,62 @@ export class AuthService {
       expect(promptArg).not.toContain('STYLE GUIDE');
     });
   });
+
+  describe('suggestBranchSlug', () => {
+    beforeEach(() => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: true,
+      } as any);
+    });
+
+    it('returns the slug from the LLM response', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('add-retry-logic');
+
+      const slug = await llmService.suggestBranchSlug('api: add retry logic to fetch');
+
+      expect(slug).toBe('add-retry-logic');
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('api: add retry logic to fetch');
+    });
+
+    it('sanitizes messy responses into a valid slug', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('  Add Retry_Logic! \n');
+
+      const slug = await llmService.suggestBranchSlug('title');
+
+      expect(slug).toBe('add-retry-logic');
+    });
+
+    it('caps the slug at five words', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('one-two-three-four-five-six-seven');
+
+      const slug = await llmService.suggestBranchSlug('title');
+
+      expect(slug).toBe('one-two-three-four-five');
+    });
+
+    it('includes a body excerpt in the prompt when given', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('fix-timeout');
+
+      await llmService.suggestBranchSlug('title', 'The timeout fires too early.');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('The timeout fires too early.');
+    });
+
+    it('throws when the response sanitizes to nothing', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('!!! ???');
+
+      await expect(llmService.suggestBranchSlug('title')).rejects.toThrow('empty branch slug');
+    });
+
+    it('throws when the agent is not authenticated', async () => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: false,
+        error: 'Not authenticated',
+      } as any);
+
+      await expect(llmService.suggestBranchSlug('title')).rejects.toThrow('Not authenticated');
+    });
+  });
 });

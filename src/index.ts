@@ -20,6 +20,7 @@ import { CreateIssueCommand } from './commands/create-issue.command.js';
 import { SetupLabelsCommand } from './commands/setup-labels.command.js';
 import { StoryCommand } from './commands/story.command.js';
 import { GrabCommand } from './commands/grab.command.js';
+import { BranchCommand } from './commands/branch.command.js';
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -81,6 +82,17 @@ program
     await loadConfig();
     const grabCommand = new GrabCommand(logger, config, git, github, guard, projectRoot);
     await grabCommand.execute(issueArg);
+  });
+
+// Register branch command
+program
+  .command('branch')
+  .description('Create (or switch to) the issue-<n>-<slug> branch off the base branch')
+  .argument('<issue>', 'Issue number to branch for')
+  .action(async (issueArg: string) => {
+    await loadConfig();
+    const branchCommand = new BranchCommand(logger, config, git, github, guard, projectRoot);
+    await branchCommand.execute(issueArg);
   });
 
 // Register pr command

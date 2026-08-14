@@ -199,6 +199,102 @@ describe('GitService', () => {
     });
   });
 
+  describe('branchExists', () => {
+    it('returns true when the branch exists', async () => {
+      mockExec.mockResolvedValue({ stdout: 'abc123\n', stderr: '', exitCode: 0 });
+
+      expect(await gitService.branchExists('issue-21-fix')).toBe(true);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('rev-parse --verify --quiet refs/heads/issue-21-fix')
+      );
+    });
+
+    it('returns false when the branch does not exist', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 1 });
+
+      expect(await gitService.branchExists('issue-21-fix')).toBe(false);
+    });
+
+    it('rejects invalid branch names', async () => {
+      await expect(gitService.branchExists('bad name; rm -rf')).rejects.toThrow('Invalid branch name');
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listBranches', () => {
+    it('returns matching branch names', async () => {
+      mockExec.mockResolvedValue({
+        stdout: 'issue-21-add-clipboard\nissue-21-old-attempt\n',
+        stderr: '',
+        exitCode: 0,
+      });
+
+      const result = await gitService.listBranches('issue-21-*');
+
+      expect(result).toEqual(['issue-21-add-clipboard', 'issue-21-old-attempt']);
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('branch --list "issue-21-*"')
+      );
+    });
+
+    it('returns an empty array when nothing matches', async () => {
+      mockExec.mockResolvedValue({ stdout: '\n', stderr: '', exitCode: 0 });
+
+      expect(await gitService.listBranches('issue-99-*')).toEqual([]);
+    });
+
+    it('rejects invalid patterns', async () => {
+      await expect(gitService.listBranches('bad pattern; rm')).rejects.toThrow('Invalid branch pattern');
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('checkout', () => {
+    it('checks out the branch', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.checkout('issue-21-fix');
+
+      expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('checkout issue-21-fix'));
+    });
+
+    it('throws when checkout fails', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: 'conflict', exitCode: 1 });
+
+      await expect(gitService.checkout('issue-21-fix')).rejects.toThrow('Git command failed');
+    });
+  });
+
+  describe('createBranch', () => {
+    it('branches off origin when the fetch succeeds', async () => {
+      mockExec.mockResolvedValue({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.createBranch('issue-21-fix', 'master');
+
+      expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('fetch origin master'));
+      expect(mockExec).toHaveBeenCalledWith(
+        expect.stringContaining('checkout -b issue-21-fix origin/master')
+      );
+    });
+
+    it('falls back to the local ref when the fetch fails', async () => {
+      mockExec
+        .mockResolvedValueOnce({ stdout: '', stderr: 'no remote', exitCode: 1 })
+        .mockResolvedValueOnce({ stdout: '', stderr: '', exitCode: 0 });
+
+      await gitService.createBranch('issue-21-fix', 'master');
+
+      expect(mockExec).toHaveBeenLastCalledWith(
+        expect.stringContaining('checkout -b issue-21-fix master')
+      );
+    });
+
+    it('rejects invalid branch names', async () => {
+      await expect(gitService.createBranch('bad name', 'master')).rejects.toThrow('Invalid branch name');
+      expect(mockExec).not.toHaveBeenCalled();
+    });
+  });
+
   describe('configured baseBranch', () => {
     let customGit: GitService;
 

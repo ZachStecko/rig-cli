@@ -280,6 +280,55 @@ Respond with ONLY a valid JSON array of objects, each with "title", "body", and 
   }
 
   /**
+   * Suggests a short kebab-case branch slug for an issue.
+   *
+   * The caller prefixes the slug with "issue-<n>-", so the slug itself
+   * only describes the change. The response is sanitized to valid
+   * branch-name characters and capped in length.
+   *
+   * @param title - The issue title
+   * @param body - Optional issue body for extra context
+   * @returns A slug like "add-retry-logic"
+   * @throws Error if the provider is unavailable or returns nothing usable
+   */
+  async suggestBranchSlug(title: string, body?: string): Promise<string> {
+    const auth = await this.agent.checkAuth();
+    if (!auth.authenticated) {
+      throw new Error(auth.error || 'Agent is not available. Check your configuration.');
+    }
+
+    const bodyExcerpt = body?.trim() ? `\nIssue body (excerpt):\n${body.trim().slice(0, 500)}\n` : '';
+    const prompt = `Generate a git branch slug for this GitHub issue.
+
+Issue title: ${title}
+${bodyExcerpt}
+RULES:
+- 2-4 words, kebab-case, lowercase letters and digits only
+- Describe the change itself, not the component (no "cli"/"api" prefixes)
+- Imperative mood: "add-retry-logic", not "retry-logic-added"
+
+Respond with ONLY the slug. No quotes, no explanation.`;
+
+    const response = await this.agent.prompt(prompt);
+    const slug = response
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .split('-')
+      .filter(Boolean)
+      .slice(0, 5)
+      .join('-')
+      .slice(0, 40)
+      .replace(/-+$/, '');
+
+    if (!slug) {
+      throw new Error('LLM returned an empty branch slug');
+    }
+    return slug;
+  }
+
+  /**
    * Builds the prompt for structuring an issue.
    *
    * @param rawDescription - User's raw description

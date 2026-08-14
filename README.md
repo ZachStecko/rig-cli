@@ -57,6 +57,19 @@ rig grab 42
 rig grab      # pick from open issues
 ```
 
+### `rig branch`
+
+Create a working branch for an issue off the latest base branch (fetched from origin when available), then push it to origin with upstream tracking. Branches follow `<type>/issue-<n>-<slug>` in lowercase kebab-case: the type comes from the issue's type label (`bug` → `fix`, `feature` → `feat`, etc.), and the slug is written by the AI from the issue content (falls back to a title-derived slug). If a branch for the issue already exists, switches to it instead.
+
+```
+fix/issue-21-handle-empty-clipboard
+feat/issue-34-add-issue-picker
+```
+
+```bash
+rig branch 21
+```
+
 ### `rig pr`
 
 Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history.

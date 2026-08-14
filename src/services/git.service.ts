@@ -94,6 +94,68 @@ export class GitService {
   }
 
   /**
+   * Checks whether a local branch exists.
+   *
+   * @param branchName - Branch name to check
+   * @returns true if the branch exists locally
+   */
+  async branchExists(branchName: string): Promise<boolean> {
+    this.validateBranchName(branchName);
+    const result = await this.git(`rev-parse --verify --quiet refs/heads/${branchName}`, {
+      ignoreErrors: true,
+    });
+    return result.exitCode === 0;
+  }
+
+  /**
+   * Lists local branches matching a glob pattern.
+   *
+   * @param pattern - Branch glob (e.g. "issue-21-*")
+   * @returns Matching branch names, in git's default order
+   */
+  async listBranches(pattern: string): Promise<string[]> {
+    // Same character set as branch names, plus '*' for globbing
+    if (!/^[a-zA-Z0-9/_.*-]+$/.test(pattern) || pattern.startsWith('-')) {
+      throw new Error(`Invalid branch pattern: "${pattern}"`);
+    }
+    const result = await this.git(`branch --list "${pattern}" --format="%(refname:short)"`);
+    return result.stdout
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Switches to an existing branch.
+   *
+   * @param branchName - Branch to switch to
+   * @throws Error if the checkout fails (e.g. conflicting local changes)
+   */
+  async checkout(branchName: string): Promise<void> {
+    this.validateBranchName(branchName);
+    await this.git(`checkout ${branchName}`);
+  }
+
+  /**
+   * Creates and switches to a new branch off the given start point.
+   *
+   * Fetches the start point from origin first so the branch starts from
+   * the latest remote state; falls back to the local ref when there is
+   * no remote or the fetch fails (e.g. offline).
+   *
+   * @param branchName - Name of the branch to create
+   * @param startPoint - Branch to start from (e.g. "main")
+   * @throws Error if branch creation fails
+   */
+  async createBranch(branchName: string, startPoint: string): Promise<void> {
+    this.validateBranchName(branchName);
+    this.validateBranchName(startPoint);
+    const fetched = await this.git(`fetch origin ${startPoint}`, { ignoreErrors: true });
+    const ref = fetched.exitCode === 0 ? `origin/${startPoint}` : startPoint;
+    await this.git(`checkout -b ${branchName} ${ref}`);
+  }
+
+  /**
    * Validates a git branch name to prevent command injection.
    *
    * Git branch names must:
