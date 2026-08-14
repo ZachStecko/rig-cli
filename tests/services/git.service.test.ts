@@ -273,7 +273,7 @@ describe('GitService', () => {
 
       expect(mockExec).toHaveBeenCalledWith(expect.stringContaining('fetch origin master'));
       expect(mockExec).toHaveBeenCalledWith(
-        expect.stringContaining('checkout -b issue-21-fix origin/master')
+        expect.stringContaining('checkout --no-track -b issue-21-fix origin/master')
       );
     });
 
@@ -285,7 +285,7 @@ describe('GitService', () => {
       await gitService.createBranch('issue-21-fix', 'master');
 
       expect(mockExec).toHaveBeenLastCalledWith(
-        expect.stringContaining('checkout -b issue-21-fix master')
+        expect.stringContaining('checkout --no-track -b issue-21-fix master')
       );
     });
 

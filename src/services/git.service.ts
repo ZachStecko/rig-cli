@@ -152,7 +152,10 @@ export class GitService {
     this.validateBranchName(startPoint);
     const fetched = await this.git(`fetch origin ${startPoint}`, { ignoreErrors: true });
     const ref = fetched.exitCode === 0 ? `origin/${startPoint}` : startPoint;
-    await this.git(`checkout -b ${branchName} ${ref}`);
+    // --no-track: without it, git sets the new branch's upstream to
+    // origin/<base>, and an editor's "push to upstream" then pushes
+    // commits straight to the base branch.
+    await this.git(`checkout --no-track -b ${branchName} ${ref}`);
   }
 
   /**
