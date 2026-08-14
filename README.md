@@ -48,6 +48,15 @@ Paste a planning spec or PRD. AI creates a parent story issue plus atomic child 
 rig story
 ```
 
+### `rig grab`
+
+Copy an issue's title and body to the clipboard, ready to paste into your coding tool (Claude Code, Cursor, etc.). With no argument, lists open issues and prompts you to pick one. Prints the issue instead if no clipboard is available.
+
+```bash
+rig grab 42
+rig grab      # pick from open issues
+```
+
 ### `rig pr`
 
 Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history.

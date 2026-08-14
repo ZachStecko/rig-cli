@@ -19,6 +19,7 @@ import { PrCommand } from './commands/pr.command.js';
 import { CreateIssueCommand } from './commands/create-issue.command.js';
 import { SetupLabelsCommand } from './commands/setup-labels.command.js';
 import { StoryCommand } from './commands/story.command.js';
+import { GrabCommand } from './commands/grab.command.js';
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -69,6 +70,17 @@ program
     await loadConfig();
     const storyCommand = new StoryCommand(logger, config, git, github, guard, projectRoot);
     await storyCommand.execute();
+  });
+
+// Register grab command
+program
+  .command('grab')
+  .description("Copy an issue's title and body to the clipboard for your coding tool")
+  .argument('[issue]', 'Issue number to copy (omit to pick from open issues)')
+  .action(async (issueArg?: string) => {
+    await loadConfig();
+    const grabCommand = new GrabCommand(logger, config, git, github, guard, projectRoot);
+    await grabCommand.execute(issueArg);
   });
 
 // Register pr command

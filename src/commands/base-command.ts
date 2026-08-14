@@ -103,6 +103,35 @@ export abstract class BaseCommand {
   }
 
   /**
+   * Prompts the user for a single line of input.
+   *
+   * @param question - The prompt to display
+   * @returns The entered line, or '' on Ctrl+C
+   * @protected
+   */
+  protected promptLine(question: string): Promise<string> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    return new Promise((resolve) => {
+      const sigintHandler = () => {
+        rl.close();
+        console.log(''); // Newline after ^C
+        resolve('');
+      };
+      process.once('SIGINT', sigintHandler);
+
+      rl.question(question, (answer) => {
+        process.removeListener('SIGINT', sigintHandler);
+        rl.close();
+        resolve(answer);
+      });
+    });
+  }
+
+  /**
    * Prompts for multiline input.
    * Reads until Ctrl+D (EOF) or a line containing only "EOF".
    *

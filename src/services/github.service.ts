@@ -74,6 +74,24 @@ export class GitHubService {
   }
 
   /**
+   * Lists open issues in the repo, most recently created first.
+   *
+   * @param limit - Maximum number of issues to return (default: 30)
+   * @returns Array of issues with number, title, and labels
+   * @throws Error if the gh command fails
+   */
+  async listOpenIssues(limit = 30): Promise<Array<Pick<Issue, 'number' | 'title' | 'labels'>>> {
+    const result = await this.gh(`issue list --state open --limit ${limit} --json number,title,labels`);
+    try {
+      return JSON.parse(result.stdout);
+    } catch (error) {
+      throw new Error(
+        `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+    }
+  }
+
+  /**
    * Lists pull requests by head branch name.
    *
    * @param branchName - Head branch name
