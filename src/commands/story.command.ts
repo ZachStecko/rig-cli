@@ -1,7 +1,6 @@
 import { BaseCommand } from './base-command.js';
 import { Logger } from '../services/logger.service.js';
 import { ConfigManager } from '../services/config-manager.service.js';
-import { StateManager } from '../services/state-manager.service.js';
 import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
@@ -28,17 +27,23 @@ export class StoryCommand extends BaseCommand {
   constructor(
     logger: Logger,
     config: ConfigManager,
-    state: StateManager,
     git: GitService,
     github: GitHubService,
     guard: GuardService,
     projectRoot?: string
   ) {
-    super(logger, config, state, git, github, guard, projectRoot);
-    this.llm = new LLMService(undefined, this.config.get());
+    super(logger, config, git, github, guard, projectRoot);
+    this.llm = new LLMService(undefined, this.config.get(), this.projectRoot);
   }
 
-  async execute(): Promise<void> {
+  /**
+   * Executes the story command.
+   *
+   * @param options - Command options
+   * @param options.file - Read the spec from this file instead of prompting
+   * @param options.yes - Skip confirmation prompts (for non-interactive use)
+   */
+  async execute(options?: { file?: string; yes?: boolean }): Promise<void> {
     const rigConfig = this.config.get();
     const defaultLabels = rigConfig.defaultLabels || [];
 
@@ -47,11 +52,20 @@ export class StoryCommand extends BaseCommand {
     this.logger.header('Decompose Planning Spec');
     console.log('');
 
-    // Prompt for spec content
-    this.logger.info('Paste your planning spec / PRD (multiline input):');
-    this.logger.dim('  Press Ctrl+D when done');
-    console.log('');
-    const specContent = await this.promptMultiline();
+    // Check LLM availability before asking the user to paste anything,
+    // so a missing CLI or API key fails fast instead of after input.
+    const llmAvailable = await this.llm.isAvailable();
+    if (!llmAvailable) {
+      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
+      process.exit(1);
+      return; // For testing
+    }
+
+    // Get spec content from the file or the user
+    const specContent = await this.readMultilineInput(
+      options?.file,
+      'Paste your planning spec / PRD (multiline input):'
+    );
 
     if (!specContent.trim()) {
       this.logger.warn('No spec content provided. Aborting.');
@@ -60,32 +74,26 @@ export class StoryCommand extends BaseCommand {
 
     this.logger.config('Spec length', `${specContent.length} chars`);
 
-    // Check LLM availability
-    const llmAvailable = await this.llm.isAvailable();
-    if (!llmAvailable) {
-      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
-      return;
-    }
-
     // Structure parent story
     let parentIssue;
     try {
-      this.logger.command('claude -p <prompt> --output-format json');
+      this.logger.command(`${this.llm.providerName} chat/completions`);
       const startTime = Date.now();
       parentIssue = await this.logger.spinner(
         this.llm.structureIssue(specContent),
-        'Structuring parent story with Claude...'
+        `Structuring parent story with ${this.llm.providerName}...`
       );
       this.logger.timing('Story structuring', Date.now() - startTime);
     } catch (error) {
       this.logger.error(`Failed to structure story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Preview parent
     this.displayPreview('Parent Story', parentIssue.title, parentIssue.body);
 
-    const parentConfirmed = await this.confirm('\nCreate parent story? (y/n): ');
+    const parentConfirmed = options?.yes || (await this.confirm('\nCreate parent story? (y/n): '));
     if (!parentConfirmed) {
       this.logger.warn('Story creation cancelled.');
       return;
@@ -110,7 +118,8 @@ export class StoryCommand extends BaseCommand {
       });
     } catch (error) {
       this.logger.error(`Failed to create parent story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     const repoName = await this.github.repoName();
@@ -121,7 +130,7 @@ export class StoryCommand extends BaseCommand {
     // Decompose into child issues
     let childIssues;
     try {
-      this.logger.command('claude -p <prompt> --output-format json');
+      this.logger.command(`${this.llm.providerName} chat/completions`);
       const startTime = Date.now();
       childIssues = await this.logger.spinner(
         this.llm.decomposeStory(specContent, parentNumber),
@@ -130,7 +139,8 @@ export class StoryCommand extends BaseCommand {
       this.logger.timing('Decomposition', Date.now() - startTime);
     } catch (error) {
       this.logger.error(`Failed to decompose story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      return;
+      process.exit(1);
+      return; // For testing
     }
 
     // Preview child issues
@@ -142,7 +152,7 @@ export class StoryCommand extends BaseCommand {
       console.log(`  - ${child.title}`);
     }
 
-    const childConfirmed = await this.confirm(`\nCreate ${childIssues.length} child issues? (y/n): `);
+    const childConfirmed = options?.yes || (await this.confirm(`\nCreate ${childIssues.length} child issues? (y/n): `));
     if (!childConfirmed) {
       this.logger.warn('Child issue creation cancelled.');
       return;
@@ -180,6 +190,16 @@ export class StoryCommand extends BaseCommand {
     console.log(`  Parent: https://github.com/${repoName}/issues/${parentNumber}`);
     for (const num of createdNumbers) {
       console.log(`  Child:  https://github.com/${repoName}/issues/${num}`);
+    }
+
+    const failedCount = childIssues.length - createdNumbers.length;
+    if (failedCount > 0) {
+      this.logger.warn(`${failedCount} of ${childIssues.length} child issues failed to create.`);
+    }
+    if (createdNumbers.length === 0) {
+      this.logger.error(`No child issues were created for story #${parentNumber}.`);
+      process.exit(1);
+      return; // For testing
     }
     this.logger.success(`Created ${createdNumbers.length} child issues for story #${parentNumber}`);
   }

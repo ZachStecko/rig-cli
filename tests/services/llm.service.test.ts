@@ -1,17 +1,20 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { LLMService, StructuredIssue } from '../../src/services/llm.service.js';
-import { CodeAgent } from '../../src/services/agents/base.agent.js';
+import { LLMProvider } from '../../src/services/llm-provider.js';
+import { writeFile, mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 describe('LLMService', () => {
   let llmService: LLMService;
-  let mockAgent: CodeAgent;
+  let mockAgent: LLMProvider;
 
   beforeEach(() => {
     mockAgent = {
+      name: 'Mock Provider',
       isAvailable: vi.fn(),
       checkAuth: vi.fn(),
       prompt: vi.fn(),
-      waitForCompletion: vi.fn(),
     } as any;
 
     llmService = new LLMService(mockAgent);
@@ -53,20 +56,6 @@ describe('LLMService', () => {
       await expect(
         llmService.structureIssue('Add authentication')
       ).rejects.toThrow('API key not set');
-    });
-
-    it('throws error when agent does not support prompt method', async () => {
-      const agentWithoutPrompt = {
-        isAvailable: vi.fn(),
-        checkAuth: vi.fn().mockResolvedValue({ authenticated: true, error: null }),
-        waitForCompletion: vi.fn(),
-      } as any;
-
-      const service = new LLMService(agentWithoutPrompt);
-
-      await expect(
-        service.structureIssue('Add authentication')
-      ).rejects.toThrow('Agent does not support the prompt() method');
     });
 
     it('parses valid JSON response from agent', async () => {
@@ -233,20 +222,6 @@ export class AuthService {
       ).rejects.toThrow('API key not set');
     });
 
-    it('throws error when agent does not support prompt method', async () => {
-      const agentWithoutPrompt = {
-        isAvailable: vi.fn(),
-        checkAuth: vi.fn().mockResolvedValue({ authenticated: true, error: null }),
-        waitForCompletion: vi.fn(),
-      } as any;
-
-      const service = new LLMService(agentWithoutPrompt);
-
-      await expect(
-        service.decomposeStory('spec content', 1)
-      ).rejects.toThrow('Agent does not support the prompt() method');
-    });
-
     it('parses valid JSON array response', async () => {
       const mockResponse = JSON.stringify([
         { title: 'cli: Add story label', body: 'Parent story: #5\n\nAdd label.', labels: ['backend'] },
@@ -334,6 +309,17 @@ export class AuthService {
       expect(result[0].labels).not.toContain('invalid-label');
     });
 
+    it('filters reserved labels from child issues', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Details.', labels: ['backend', 'story', 'rig-created', 'feature'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].labels).toEqual(['backend', 'feature']);
+    });
+
     it('includes parent issue number in prompt', async () => {
       const mockResponse = JSON.stringify([
         { title: 'Add auth', body: 'Parent story: #42\n\nDetails.', labels: [] },
@@ -369,6 +355,148 @@ export class AuthService {
 
       const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
       expect(promptArg).toContain('Do not add features, enhancements, or nice-to-haves beyond what the spec explicitly details');
+    });
+  });
+
+  describe('style guide injection', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await mkdtemp(join(tmpdir(), 'rig-style-'));
+    });
+
+    afterEach(async () => {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    });
+
+    const validResponse = JSON.stringify({ title: 'Add auth', body: 'Details.', labels: [] });
+    const validArrayResponse = JSON.stringify([{ title: 'Add auth', body: 'Details.', labels: [] }]);
+
+    it('injects the style file into the structureIssue prompt', async () => {
+      const styleFile = join(tempDir, 'style.md');
+      await writeFile(styleFile, 'Use short sentences. No idioms.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: styleFile }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('STYLE GUIDE (mandatory)');
+      expect(promptArg).toContain('Use short sentences. No idioms.');
+    });
+
+    it('injects the style file into the decomposeStory prompt', async () => {
+      const styleFile = join(tempDir, 'style.md');
+      await writeFile(styleFile, 'Use short sentences. No idioms.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: styleFile }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validArrayResponse);
+
+      await service.decomposeStory('spec', 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('STYLE GUIDE (mandatory)');
+      expect(promptArg).toContain('Use short sentences. No idioms.');
+    });
+
+    it('resolves relative style paths against the project root', async () => {
+      await writeFile(join(tempDir, 'style.md'), 'Relative rules here.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: 'style.md' }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('Relative rules here.');
+    });
+
+    it('warns and continues when the style file is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: 'missing.md' }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      const result = await service.structureIssue('Add login');
+
+      expect(result.title).toBe('Add auth');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('missing.md'));
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).not.toContain('STYLE GUIDE');
+      warnSpy.mockRestore();
+    });
+
+    it('omits the style section when no style_file is configured', async () => {
+      const service = new LLMService(mockAgent, { agent: {}, git: {} }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).not.toContain('STYLE GUIDE');
+    });
+  });
+
+  describe('suggestBranchSlug', () => {
+    beforeEach(() => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: true,
+      } as any);
+    });
+
+    it('returns the slug from the LLM response', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('add-retry-logic');
+
+      const slug = await llmService.suggestBranchSlug('api: add retry logic to fetch');
+
+      expect(slug).toBe('add-retry-logic');
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('api: add retry logic to fetch');
+    });
+
+    it('sanitizes messy responses into a valid slug', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('  Add Retry_Logic! \n');
+
+      const slug = await llmService.suggestBranchSlug('title');
+
+      expect(slug).toBe('add-retry-logic');
+    });
+
+    it('caps the slug at five words', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('one-two-three-four-five-six-seven');
+
+      const slug = await llmService.suggestBranchSlug('title');
+
+      expect(slug).toBe('one-two-three-four-five');
+    });
+
+    it('includes a body excerpt in the prompt when given', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('fix-timeout');
+
+      await llmService.suggestBranchSlug('title', 'The timeout fires too early.');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('The timeout fires too early.');
+    });
+
+    it('throws when the response sanitizes to nothing', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('!!! ???');
+
+      await expect(llmService.suggestBranchSlug('title')).rejects.toThrow('empty branch slug');
+    });
+
+    it('throws when the agent is not authenticated', async () => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: false,
+        error: 'Not authenticated',
+      } as any);
+
+      await expect(llmService.suggestBranchSlug('title')).rejects.toThrow('Not authenticated');
     });
   });
 });

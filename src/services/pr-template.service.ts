@@ -1,12 +1,9 @@
-import { GitHubService } from './github.service.js';
 import { GitService } from './git.service.js';
 import { TemplateEngine } from './template-engine.service.js';
-import { TestRunnerService } from './test-runner.service.js';
+import { Issue } from '../types/issue.types.js';
 import { readFile } from 'fs/promises';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { ComponentType } from '../types/issue.types.js';
-import { existsSync, readdirSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -18,51 +15,31 @@ const __dirname = dirname(__filename);
  * test results, and substituting them into the pr-body.md template.
  */
 export class PrTemplateService {
-  private github: GitHubService;
   private git: GitService;
   private templateEngine: TemplateEngine;
-  private testRunner: TestRunnerService;
-  private projectRoot: string;
 
   /**
    * Creates a new PrTemplateService instance.
    *
-   * @param github - GitHubService for fetching issue data
    * @param git - GitService for git operations
    * @param templateEngine - TemplateEngine for rendering templates
-   * @param testRunner - TestRunnerService for test operations
-   * @param projectRoot - Absolute path to project root
    */
-  constructor(
-    github: GitHubService,
-    git: GitService,
-    templateEngine: TemplateEngine,
-    testRunner: TestRunnerService,
-    projectRoot: string
-  ) {
-    this.github = github;
+  constructor(git: GitService, templateEngine: TemplateEngine) {
     this.git = git;
     this.templateEngine = templateEngine;
-    this.testRunner = testRunner;
-    this.projectRoot = projectRoot;
   }
 
   /**
    * Generates PR body text from template.
    *
-   * Gathers issue info, commit history, diff stats, test results, and demo info,
-   * then substitutes them into the pr-body.md template.
+   * Uses the already-fetched issue plus commit history, then substitutes
+   * them into the pr-body.md template.
    *
-   * @param issueNumber - Issue number this PR addresses
-   * @param component - Component type (backend/frontend/devnet/fullstack)
+   * @param issue - The issue this PR addresses (fetched by the caller)
    * @returns Rendered PR body text
    */
-  async generatePrBody(
-    issueNumber: number,
-    component: ComponentType
-  ): Promise<string> {
-    // Fetch issue data
-    const issue = await this.github.viewIssue(issueNumber);
+  async generatePrBody(issue: Issue): Promise<string> {
+    const issueNumber = issue.number;
 
     // Build issue summary (first paragraph or title)
     const issueSummary = this.extractSummary(issue.body || '', issue.title);
@@ -78,12 +55,11 @@ export class PrTemplateService {
       .map(line => `- ${line}`)
       .join('\n');
 
-    // Generate AI-powered manual test steps
-    const manualTestSteps = await this.generateManualTestSteps(
+    // Generate manual test steps from the issue and commit context
+    const manualTestSteps = this.generateManualTestSteps(
       issue.body || '',
       issueSummary,
-      formattedCommitLog,
-      component
+      formattedCommitLog
     );
 
     // Load template
@@ -183,15 +159,13 @@ export class PrTemplateService {
    * @param issueBody - Issue body text
    * @param issueSummary - Issue summary
    * @param commitLog - Formatted commit log
-   * @param component - Component type
    * @returns Testing instructions
    */
-  private async generateManualTestSteps(
+  private generateManualTestSteps(
     issueBody: string,
     issueSummary: string,
-    commitLog: string,
-    component: ComponentType
-  ): Promise<string> {
+    commitLog: string
+  ): string {
     // Extract testing section from issue if it exists
     const testingSectionMatch = issueBody.match(
       /(###?\s+(Manual Testing|Testing Steps|How to Test|Testing)[\s\S]*?)(?=\n###|$)/i
@@ -248,91 +222,5 @@ export class PrTemplateService {
     }
 
     return steps.join('\n');
-  }
-
-  /**
-   * Gets fallback manual testing instructions when AI generation fails.
-   *
-   * @private
-   * @param component - Component type
-   * @returns Fallback testing instructions
-   */
-  private getFallbackTestInstructions(component: ComponentType): string {
-    switch (component) {
-      case 'backend':
-        return '1. Test API endpoints using curl or Postman\n2. Verify response formats and status codes\n3. Test error handling with invalid inputs\n4. Check database changes (if applicable)';
-      case 'frontend':
-        return '1. Test UI changes in the browser\n2. Verify responsive design on different screen sizes\n3. Test user interactions (clicks, forms, navigation)\n4. Check console for errors';
-      case 'devnet':
-        return '1. Deploy to local devnet\n2. Test smart contract interactions\n3. Verify transaction outcomes\n4. Check event emissions';
-      case 'node':
-        return '1. Run `npm test` to verify all tests pass\n2. Run `npm run lint` to check for lint errors\n3. Run `npm run build` to verify compilation\n4. Test CLI commands or library exports manually';
-      case 'fullstack':
-      default:
-        return '1. Test end-to-end user flows\n2. Verify frontend-backend integration\n3. Test error handling across the stack\n4. Check data consistency';
-    }
-  }
-
-  /**
-   * Builds test instructions based on component type.
-   *
-   * @private
-   * @param component - Component type
-   * @returns Test instructions markdown
-   */
-  private buildTestInstructions(component: ComponentType): string {
-    switch (component) {
-      case 'backend':
-        return '```bash\ncd backend && go test ./... -v\n```';
-
-      case 'frontend':
-        return '```bash\ncd frontend && npm test\ncd frontend && npm run lint\ncd frontend && npm run build\n```';
-
-      case 'devnet':
-        return '```bash\ncd devnet && npx vitest run\n```';
-
-      case 'node':
-        return '```bash\nnpm test\nnpm run lint\nnpm run build\n```';
-
-      case 'fullstack':
-      default:
-        // For fullstack/mixed changes, list both test suites separately
-        return '```bash\n# Backend tests\ncd backend && go test ./... -v\n\n# Frontend tests\ncd frontend && npm test\ncd frontend && npm run lint\ncd frontend && npm run build\n```';
-    }
-  }
-
-  /**
-   * DISABLED: Demo feature disabled for redesign
-   *
-   * Builds demo section by checking for demo files.
-   *
-   * @private
-   * @param issueNumber - Issue number
-   * @returns Demo section markdown (always empty as feature is disabled)
-   */
-  private buildDemoSection(issueNumber: number): string {
-    // DISABLED: Demo feature disabled for redesign
-    return '';
-
-    // const demoDir = resolve(this.projectRoot, `.rig-reviews/issue-${issueNumber}`);
-    //
-    // if (!existsSync(demoDir)) {
-    //   return '_No demo recorded_';
-    // }
-    //
-    // // Check for .gif files (newest first would require fs.stat, keep it simple)
-    // try {
-    //   const files = readdirSync(demoDir);
-    //   const demoFiles = files.filter((f: string) => f.startsWith('demo-') && f.endsWith('.gif'));
-    //
-    //   if (demoFiles.length > 0) {
-    //     // Use the first demo file found
-    //     return `![Demo](${demoFiles[0]})`;
-    //   }
-    //
-    //   return `Demo artifacts available in \`.rig-reviews/issue-${issueNumber}/\``;
-    // } catch {
-    //   return '_No demo recorded_';
-    // }
   }
 }

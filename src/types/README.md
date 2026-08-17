@@ -95,29 +95,22 @@ To add a new label to the system:
 To remove a label:
 
 1. **Delete the constant** from the appropriate category in `labels.types.ts`
-2. **Update documentation** in `docs/configuration.md`
-3. **Search for usages** across the codebase and update accordingly
-4. **(Optional) Archive the label in GitHub** if no longer needed
+2. **Search for usages** across the codebase and update accordingly
+3. **(Optional) Archive the label in GitHub** if no longer needed
 
 ### Label Categories
 
 #### Component Labels
-Indicate which part of the system an issue affects. Used for:
-- Test runner selection (which tests to run)
-- Component detection in `PromptBuilderService`
-- Issue filtering in queue commands
+Indicate which part of the system an issue affects. Offered to the LLM
+when it labels issues in `rig create-issue` and `rig story`.
 
 #### Priority Labels
-Indicate urgency/importance. Used for:
-- Issue queue sorting
-- Priority-based filtering
-- SLA tracking
+Indicate urgency/importance. Available for the LLM to apply and for
+manual triage on GitHub.
 
 #### Phase Labels
-Indicate project milestone/phase. Used for:
-- Roadmap organization
-- Queue filtering by phase
-- Priority calculation (phase multipliers)
+Indicate project milestone/phase. Available for roadmap organization
+on GitHub.
 
 #### Type Labels
 Indicate the kind of work. Used for:
@@ -180,6 +173,5 @@ Before this system, labels were free-form strings throughout the codebase. Benef
 
 - `src/types/config.types.ts` - Uses `ValidLabel` type for `defaultLabels` config
 - `src/commands/create-issue.command.ts` - Validates labels before issue creation
-- `docs/configuration.md` - User-facing documentation of valid labels
 - `tests/types/labels.types.test.ts` - Comprehensive tests for label system
 - `tests/commands/create-issue.command.test.ts` - Tests for label validation in commands

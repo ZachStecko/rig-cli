@@ -32,41 +32,6 @@ export class GitService {
   }
 
   /**
-   * Checks if the working tree is clean (no uncommitted changes).
-   *
-   * @returns true if clean, false if there are uncommitted changes
-   * @throws Error if git command fails
-   */
-  async isClean(): Promise<boolean> {
-    const result = await this.git('status --porcelain');
-    return result.stdout.trim() === '';
-  }
-
-  /**
-   * Gets the raw git status output (porcelain format).
-   * Useful for comparing git state before and after operations.
-   *
-   * @returns Raw git status output (one line per changed file)
-   * @throws Error if git command fails
-   */
-  async getStatus(): Promise<string> {
-    const result = await this.git('status --porcelain');
-    return result.stdout.trim();
-  }
-
-  /**
-   * Gets the current commit hash (HEAD).
-   * Useful for detecting if new commits were made during an operation.
-   *
-   * @returns Current commit SHA hash
-   * @throws Error if git command fails or not in a git repository
-   */
-  async getCurrentCommit(): Promise<string> {
-    const result = await this.git('rev-parse HEAD');
-    return result.stdout.trim();
-  }
-
-  /**
    * Gets the name of the current branch.
    *
    * @returns Current branch name (e.g., "main", "issue-123-fix-bug")
@@ -75,62 +40,6 @@ export class GitService {
   async currentBranch(): Promise<string> {
     const result = await this.git('rev-parse --abbrev-ref HEAD');
     return result.stdout.trim();
-  }
-
-  /**
-   * Checks if currently on the base branch (master/main or configured baseBranch).
-   *
-   * @returns true if on the base branch, false otherwise
-   * @throws Error if git command fails
-   */
-  async isOnMaster(): Promise<boolean> {
-    const branch = await this.currentBranch();
-    if (this.baseBranch) {
-      return branch === this.baseBranch;
-    }
-    return branch === 'master' || branch === 'main';
-  }
-
-  /**
-   * Checks if currently on a feature branch (not master/main).
-   *
-   * @returns true if on a feature branch, false if on master/main
-   * @throws Error if git command fails
-   */
-  async isOnFeatureBranch(): Promise<boolean> {
-    return !(await this.isOnMaster());
-  }
-
-  /**
-   * Creates and checks out a new branch.
-   *
-   * @param branchName - Name of the branch to create
-   * @throws Error if branch name is invalid, branch already exists, or git command fails
-   */
-  async createBranch(branchName: string): Promise<void> {
-    this.validateBranchName(branchName);
-    await this.git(`checkout -b ${branchName}`);
-  }
-
-  /**
-   * Checks out the base branch (configured baseBranch, or main/master auto-detected).
-   *
-   * @throws Error if the base branch does not exist
-   */
-  async checkoutMaster(): Promise<void> {
-    if (this.baseBranch) {
-      await this.git(`checkout ${this.baseBranch}`);
-      return;
-    }
-
-    // Try main first (modern default)
-    const mainResult = await this.git('checkout main', { ignoreErrors: true });
-    if (mainResult.exitCode === 0) {
-      return;
-    }
-
-    // Fall back to master
-    await this.git('checkout master');
   }
 
   /**
@@ -145,115 +54,7 @@ export class GitService {
   }
 
   /**
-   * Deletes a branch both locally and remotely.
-   *
-   * @param branchName - Name of the branch to delete
-   * @param options - Options for branch deletion
-   * @param options.force - Force delete even if not fully merged (default: true)
-   * @param options.remote - Also delete from remote (default: false)
-   * @throws Error if branch deletion fails
-   */
-  async deleteBranch(branchName: string, options: { force?: boolean; remote?: boolean } = {}): Promise<void> {
-    const { force = true, remote = false } = options;
-    this.validateBranchName(branchName);
-
-    // Delete local branch
-    const deleteFlag = force ? '-D' : '-d';
-    await this.git(`branch ${deleteFlag} ${branchName}`, { ignoreErrors: true });
-
-    // Delete remote branch if requested
-    if (remote) {
-      await this.git(`push origin --delete ${branchName}`, { ignoreErrors: true });
-    }
-  }
-
-  /**
-   * Stages all changes and commits with the given message.
-   *
-   * @param message - Commit message
-   * @throws Error if there are no changes to commit or commit fails
-   */
-  async commitAll(message: string): Promise<void> {
-    await this.git('add -A');
-    const escaped = message.replace(/`/g, '\\`').replace(/\$/g, '\\$');
-    await this.git(`commit -m ${JSON.stringify(escaped)}`);
-  }
-
-  /**
-   * Checks if a branch exists locally.
-   *
-   * @param branchName - Name of the branch to check
-   * @returns True if branch exists, false otherwise
-   */
-  async branchExists(branchName: string): Promise<boolean> {
-    const result = await this.git(`rev-parse --verify ${branchName}`, { ignoreErrors: true });
-    return result.exitCode === 0;
-  }
-
-  /**
-   * Checks if a branch exists on remote.
-   *
-   * @param branchName - Name of the branch to check
-   * @returns True if branch exists on remote, false otherwise
-   */
-  async remoteBranchExists(branchName: string): Promise<boolean> {
-    this.validateBranchName(branchName);
-    const result = await this.git(`ls-remote --heads origin ${branchName}`, { ignoreErrors: true });
-    return result.exitCode === 0 && result.stdout.trim().length > 0;
-  }
-
-  /**
-   * Gets diff statistics against master/main branch.
-   * Returns lines added/removed/changed.
-   *
-   * @returns Diff stat output (e.g., "3 files changed, 42 insertions(+), 7 deletions(-)")
-   * @throws Error if git command fails
-   */
-  async diffStatVsMaster(): Promise<string> {
-    const master = await this.getBaseBranchName();
-    const result = await this.git(`diff --stat ${master}...HEAD`);
-    return result.stdout.trim();
-  }
-
-  /**
-   * Gets list of new files added in current branch vs master/main.
-   * Returns relative file paths from repository root.
-   *
-   * @returns Array of new file paths (relative to repository root)
-   * @throws Error if git command fails
-   */
-  async newFilesVsMaster(): Promise<string[]> {
-    const master = await this.getBaseBranchName();
-    const result = await this.git(`diff --name-only --diff-filter=A ${master}...HEAD`);
-
-    const files = result.stdout
-      .trim()
-      .split('\n')
-      .filter(line => line.length > 0);
-
-    return files;
-  }
-
-  /**
-   * Counts commits in current branch that aren't in master/main.
-   *
-   * @returns Number of commits ahead of master
-   * @throws Error if git command fails or returns invalid output
-   */
-  async commitCountVsMaster(): Promise<number> {
-    const master = await this.getBaseBranchName();
-    const result = await this.git(`rev-list --count ${master}..HEAD`);
-    const count = parseInt(result.stdout.trim(), 10);
-
-    if (isNaN(count)) {
-      throw new Error(`Invalid commit count from git: "${result.stdout.trim()}"`);
-    }
-
-    return count;
-  }
-
-  /**
-   * Gets commit log for current branch vs master/main.
+   * Gets commit log for current branch vs the base branch.
    * Returns formatted commit messages.
    *
    * @returns Commit log output
@@ -262,67 +63,6 @@ export class GitService {
   async logVsMaster(): Promise<string> {
     const master = await this.getBaseBranchName();
     const result = await this.git(`log ${master}..HEAD --oneline`);
-    return result.stdout.trim();
-  }
-
-  /**
-   * Counts total changed files in current branch vs master/main.
-   * Includes new, modified, and deleted files.
-   *
-   * @returns Number of changed files
-   * @throws Error if git command fails
-   */
-  async changedFilesCountVsMaster(): Promise<number> {
-    const master = await this.getBaseBranchName();
-    const result = await this.git(`diff --name-only ${master}...HEAD`);
-
-    const files = result.stdout
-      .trim()
-      .split('\n')
-      .filter(line => line.length > 0);
-
-    return files.length;
-  }
-
-  /**
-   * Counts total lines changed (insertions + deletions) in current branch vs master/main.
-   * Parses the summary line from git diff --stat output.
-   *
-   * @returns Total lines changed (insertions + deletions)
-   * @throws Error if git command fails or output is unparseable
-   */
-  async diffLinesVsMaster(): Promise<number> {
-    const master = await this.getBaseBranchName();
-    const result = await this.git(`diff --stat ${master}...HEAD`);
-
-    // Parse the summary line (last line) which looks like:
-    // " 5 files changed, 123 insertions(+), 45 deletions(-)"
-    const lines = result.stdout.trim().split('\n');
-    if (lines.length === 0) {
-      return 0; // No changes
-    }
-
-    const summaryLine = lines[lines.length - 1];
-
-    // Extract insertions
-    const insertionMatch = summaryLine.match(/(\d+) insertion/);
-    const insertions = insertionMatch ? parseInt(insertionMatch[1], 10) : 0;
-
-    // Extract deletions
-    const deletionMatch = summaryLine.match(/(\d+) deletion/);
-    const deletions = deletionMatch ? parseInt(deletionMatch[1], 10) : 0;
-
-    return insertions + deletions;
-  }
-
-  /**
-   * Gets the repository root directory (git toplevel).
-   *
-   * @returns Absolute path to the repository root
-   * @throws Error if not in a git repository
-   */
-  async repoRoot(): Promise<string> {
-    const result = await this.git('rev-parse --show-toplevel');
     return result.stdout.trim();
   }
 
@@ -351,6 +91,71 @@ export class GitService {
     }
 
     throw new Error('Neither "main" nor "master" branch found');
+  }
+
+  /**
+   * Checks whether a local branch exists.
+   *
+   * @param branchName - Branch name to check
+   * @returns true if the branch exists locally
+   */
+  async branchExists(branchName: string): Promise<boolean> {
+    this.validateBranchName(branchName);
+    const result = await this.git(`rev-parse --verify --quiet refs/heads/${branchName}`, {
+      ignoreErrors: true,
+    });
+    return result.exitCode === 0;
+  }
+
+  /**
+   * Lists local branches matching a glob pattern.
+   *
+   * @param pattern - Branch glob (e.g. "issue-21-*")
+   * @returns Matching branch names, in git's default order
+   */
+  async listBranches(pattern: string): Promise<string[]> {
+    // Same character set as branch names, plus '*' for globbing
+    if (!/^[a-zA-Z0-9/_.*-]+$/.test(pattern) || pattern.startsWith('-')) {
+      throw new Error(`Invalid branch pattern: "${pattern}"`);
+    }
+    const result = await this.git(`branch --list "${pattern}" --format="%(refname:short)"`);
+    return result.stdout
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+  }
+
+  /**
+   * Switches to an existing branch.
+   *
+   * @param branchName - Branch to switch to
+   * @throws Error if the checkout fails (e.g. conflicting local changes)
+   */
+  async checkout(branchName: string): Promise<void> {
+    this.validateBranchName(branchName);
+    await this.git(`checkout ${branchName}`);
+  }
+
+  /**
+   * Creates and switches to a new branch off the given start point.
+   *
+   * Fetches the start point from origin first so the branch starts from
+   * the latest remote state; falls back to the local ref when there is
+   * no remote or the fetch fails (e.g. offline).
+   *
+   * @param branchName - Name of the branch to create
+   * @param startPoint - Branch to start from (e.g. "main")
+   * @throws Error if branch creation fails
+   */
+  async createBranch(branchName: string, startPoint: string): Promise<void> {
+    this.validateBranchName(branchName);
+    this.validateBranchName(startPoint);
+    const fetched = await this.git(`fetch origin ${startPoint}`, { ignoreErrors: true });
+    const ref = fetched.exitCode === 0 ? `origin/${startPoint}` : startPoint;
+    // --no-track: without it, git sets the new branch's upstream to
+    // origin/<base>, and an editor's "push to upstream" then pushes
+    // commits straight to the base branch.
+    await this.git(`checkout --no-track -b ${branchName} ${ref}`);
   }
 
   /**

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { StoryCommand } from '../../src/commands/story.command.js';
 import { Logger } from '../../src/services/logger.service.js';
 import { ConfigManager } from '../../src/services/config-manager.service.js';
-import { StateManager } from '../../src/services/state-manager.service.js';
 import { GitService } from '../../src/services/git.service.js';
 import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
@@ -18,11 +17,11 @@ describe('StoryCommand', () => {
   let command: StoryCommand;
   let mockLogger: Logger;
   let mockConfig: ConfigManager;
-  let mockState: StateManager;
   let mockGit: GitService;
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
   let consoleLogSpy: any;
+  let exitSpy: any;
   let mockLLMService: any;
 
   beforeEach(() => {
@@ -41,13 +40,7 @@ describe('StoryCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { provider: 'binary' }, verbose: false }),
-    } as any;
-
-    mockState = {
-      exists: vi.fn(),
-      read: vi.fn(),
-      write: vi.fn(),
+      get: vi.fn().mockReturnValue({ agent: { provider: 'kimi' }, verbose: false }),
     } as any;
 
     mockGit = {
@@ -65,9 +58,10 @@ describe('StoryCommand', () => {
     } as any;
 
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
 
     mockLLMService = {
-      isAvailable: vi.fn(),
+      isAvailable: vi.fn().mockResolvedValue(true),
       structureIssue: vi.fn(),
       decomposeStory: vi.fn(),
     };
@@ -79,7 +73,6 @@ describe('StoryCommand', () => {
     command = new StoryCommand(
       mockLogger,
       mockConfig,
-      mockState,
       mockGit,
       mockGitHub,
       mockGuard,
@@ -353,7 +346,7 @@ describe('StoryCommand', () => {
 
     it('includes default labels from config on parent and child issues', async () => {
       vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'binary' },
+        agent: { provider: 'kimi' },
         verbose: false,
         defaultLabels: ['P1'],
       } as any);
@@ -362,7 +355,6 @@ describe('StoryCommand', () => {
       command = new StoryCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard,
