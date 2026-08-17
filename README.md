@@ -4,6 +4,8 @@
 
 AI-assisted GitHub issue creation and PR opening. rig handles the chores around your code: it turns plans into well-formed GitHub issues, and finished branches into well-formed pull requests. You implement with whatever coding tool you prefer.
 
+A side benefit: every change follows a traceable path from issue to branch to pull request. That paper trail doubles as change-management evidence for compliance frameworks like SOC 2.
+
 ---
 
 ## Workflow
