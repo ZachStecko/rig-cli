@@ -15,6 +15,3 @@ Closes #{{issue_number}}
 ## How to Test
 
 {{manual_test_steps}}
-
----
-*Implemented by Claude Code via `rig ship`*

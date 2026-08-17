@@ -1,7 +1,29 @@
-import { CodeAgent } from './agents/base.agent.js';
-import { createAgent } from './agents/agent-factory.js';
+import { readFile } from 'fs/promises';
+import { resolve } from 'path';
+import { homedir } from 'os';
+import { LLMProvider, createProvider } from './llm-provider.js';
 import { RigConfig } from '../types/config.types.js';
-import { getAllValidLabels, isValidLabel } from '../types/labels.types.js';
+import {
+  getAllValidLabels,
+  isValidLabel,
+  COMPONENT_LABELS,
+  TYPE_LABELS,
+  SPECIAL_LABELS,
+} from '../types/labels.types.js';
+
+/**
+ * Labels the LLM must not pick: 'story' marks parent issues created by
+ * rig story, and the rig-* markers are applied by rig itself.
+ */
+const RESERVED_LABELS = new Set<string>([
+  TYPE_LABELS.STORY,
+  ...Object.values(SPECIAL_LABELS),
+]);
+
+/** Labels the LLM may pick from, derived from the single source of truth. */
+function pickableLabels(): string[] {
+  return getAllValidLabels().filter(label => !RESERVED_LABELS.has(label));
+}
 
 /**
  * Response from structuring an issue description.
@@ -19,37 +41,80 @@ export interface StructuredIssue {
 const GITHUB_TITLE_MAX_LENGTH = 256;
 
 /**
- * LLMService handles text processing tasks using Claude.
+ * LLMService handles text processing tasks using the configured LLM provider.
  *
- * Uses the configured agent's prompt() method for simple text completion
+ * Uses the provider's prompt() method for simple text completion
  * tasks like structuring issue descriptions.
  */
 export class LLMService {
-  private agent: CodeAgent;
+  private agent: LLMProvider;
+  private config?: RigConfig;
+  private projectRoot: string;
+  private stylePromise?: Promise<string>;
 
-  constructor(agent?: CodeAgent, config?: RigConfig) {
-    this.agent = agent ?? createAgent(config);
+  constructor(agent?: LLMProvider, config?: RigConfig, projectRoot?: string) {
+    this.agent = agent ?? createProvider(config);
+    this.config = config;
+    this.projectRoot = projectRoot ?? process.cwd();
   }
 
   /**
-   * Checks if the Claude Agent SDK is available (API key is set).
+   * Loads the configured style guide as a prompt section, cached for the
+   * process lifetime. Returns '' when no style_file is configured; warns
+   * and returns '' when the file cannot be read.
+   */
+  private loadStyleSection(): Promise<string> {
+    this.stylePromise ??= (async () => {
+      const styleFile = this.config?.style_file;
+      if (!styleFile) {
+        return '';
+      }
+      const path = styleFile.startsWith('~/')
+        ? resolve(homedir(), styleFile.slice(2))
+        : resolve(this.projectRoot, styleFile);
+      try {
+        const content = await readFile(path, 'utf-8');
+        return `
+
+STYLE GUIDE (mandatory)
+Apply these writing rules to every generated title and body. Where they
+conflict with tone or formatting guidance above, the style guide wins.
+Structural requirements (required sections, JSON output format) are not
+affected by the style guide.
+
+${content.trim()}`;
+      } catch {
+        console.warn(`Warning: style_file '${styleFile}' could not be read; continuing without it.`);
+        return '';
+      }
+    })();
+    return this.stylePromise;
+  }
+
+  /**
+   * Checks if the configured provider is available (its API key is set).
    *
-   * @returns true if the agent is available, false otherwise
+   * @returns true if the provider is available, false otherwise
    */
   async isAvailable(): Promise<boolean> {
     return this.agent.isAvailable();
   }
 
+  /** Display name of the underlying provider (e.g. 'Kimi'). */
+  get providerName(): string {
+    return this.agent.name;
+  }
+
   /**
    * Structures a raw issue description into a proper GitHub issue format.
    *
-   * Takes user's raw description and uses Claude to create a well-structured
+   * Takes user's raw description and uses the LLM to create a well-structured
    * issue with a clear title and body. The output is written in a direct,
    * technical style without excessive formatting.
    *
    * @param rawDescription - The user's unstructured issue description
    * @returns Structured issue with title and body
-   * @throws Error if API key is not set or API call fails
+   * @throws Error if the provider is not authenticated or the call fails
    */
   async structureIssue(rawDescription: string): Promise<StructuredIssue> {
     // Check if agent is available
@@ -60,22 +125,24 @@ export class LLMService {
 
     // Build the prompt for structuring the issue, with JSON output instruction
     const prompt = this.buildIssuePrompt(rawDescription);
-    const validLabels = getAllValidLabels();
-    const jsonPrompt = `${prompt}
+    const styleSection = await this.loadStyleSection();
+    // Derive the label vocabulary from labels.types.ts so the prompt cannot
+    // drift from the source of truth.
+    const componentList = Object.values(COMPONENT_LABELS).join(', ');
+    const typeList = Object.values(TYPE_LABELS)
+      .filter(label => label !== TYPE_LABELS.STORY)
+      .join(', ');
+    const jsonPrompt = `${prompt}${styleSection}
 
 Respond with ONLY a valid JSON object with "title", "body", and "labels" fields. No markdown fences, no explanation.
 
-For "labels", pick 1-4 from this list based on the issue content: ${validLabels.join(', ')}
-Always include one component label (backend, frontend, fullstack, devnet, node, infra, serverless) and one type label (bug, enhancement, feature, refactor, docs, chore, test).`;
+For "labels", pick 1-4 from this list based on the issue content: ${pickableLabels().join(', ')}
+Always include one component label (${componentList}) and one type label (${typeList}).`;
 
-    // Call Claude via the agent
-    if (!this.agent.prompt) {
-      throw new Error('Agent does not support the prompt() method');
-    }
     const responseText = await this.agent.prompt(jsonPrompt);
 
-    // Extract JSON from the response — Claude may include preamble text
-    // before the actual JSON object when acting as an agent.
+    // Extract JSON from the response — the model may include preamble text
+    // or markdown fences around the actual JSON object.
     let structured: StructuredIssue;
     try {
       // Try parsing the whole response first (fast path)
@@ -112,9 +179,11 @@ Always include one component label (backend, frontend, fullstack, devnet, node, 
       structured.title = structured.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
     }
 
-    // Filter labels to only valid ones
+    // Keep only valid, non-reserved labels; the LLM may ignore the pick list.
     if (structured.labels) {
-      structured.labels = structured.labels.filter(l => isValidLabel(l));
+      structured.labels = structured.labels.filter(
+        l => isValidLabel(l) && !RESERVED_LABELS.has(l)
+      );
     }
 
     return structured;
@@ -123,7 +192,7 @@ Always include one component label (backend, frontend, fullstack, devnet, node, 
   /**
    * Decomposes a planning spec into atomic child issues.
    *
-   * Takes a full spec/PRD content and a parent issue number, then uses Claude
+   * Takes a full spec/PRD content and a parent issue number, then uses the LLM
    * to break it down into small, independently implementable GitHub issues.
    * Each child issue body includes a reference back to the parent story.
    *
@@ -138,8 +207,12 @@ Always include one component label (backend, frontend, fullstack, devnet, node, 
       throw new Error(auth.error || 'Agent is not available. Check your configuration.');
     }
 
-    const validLabels = getAllValidLabels();
-    const prompt = `You are decomposing a planning spec into atomic GitHub issues for implementation by Claude Code.
+    const styleSection = await this.loadStyleSection();
+    const componentList = Object.values(COMPONENT_LABELS).join(', ');
+    const typeList = Object.values(TYPE_LABELS)
+      .filter(label => label !== TYPE_LABELS.STORY)
+      .join(', ');
+    const prompt = `You are decomposing a planning spec into atomic GitHub issues.
 
 Each issue must be independently implementable — a single developer should be able to pick it up and complete it without needing other issues to be done first (unless explicitly noted as a dependency).
 
@@ -154,15 +227,13 @@ RULES:
 - Use the same issue body format: ## Problem / Motivation, ## Implementation Details, ## Testing Strategy, ## Acceptance Criteria. Skip sections that don't apply.
 - Titles: imperative, 50-80 chars, with component prefix if clear (cli: / api: / ui: / etc.)
 - No filler prose. Senior engineer to senior engineer tone.
+${styleSection}
 
-For "labels" on each issue, pick 1-4 from this list: ${validLabels.join(', ')}
-Always include one component label and one type label.
+For "labels" on each issue, pick 1-4 from this list: ${pickableLabels().join(', ')}
+Always include one component label (${componentList}) and one type label (${typeList}).
 
 Respond with ONLY a valid JSON array of objects, each with "title", "body", and "labels" fields. No markdown fences, no explanation.`;
 
-    if (!this.agent.prompt) {
-      throw new Error('Agent does not support the prompt() method');
-    }
     const responseText = await this.agent.prompt(prompt);
 
     let issues: StructuredIssue[];
@@ -199,11 +270,62 @@ Respond with ONLY a valid JSON array of objects, each with "title", "body", and 
         issue.title = issue.title.substring(0, GITHUB_TITLE_MAX_LENGTH - 3) + '...';
       }
       if (issue.labels) {
-        issue.labels = issue.labels.filter(l => isValidLabel(l));
+        issue.labels = issue.labels.filter(
+          l => isValidLabel(l) && !RESERVED_LABELS.has(l)
+        );
       }
     }
 
     return issues;
+  }
+
+  /**
+   * Suggests a short kebab-case branch slug for an issue.
+   *
+   * The caller prefixes the slug with "issue-<n>-", so the slug itself
+   * only describes the change. The response is sanitized to valid
+   * branch-name characters and capped in length.
+   *
+   * @param title - The issue title
+   * @param body - Optional issue body for extra context
+   * @returns A slug like "add-retry-logic"
+   * @throws Error if the provider is unavailable or returns nothing usable
+   */
+  async suggestBranchSlug(title: string, body?: string): Promise<string> {
+    const auth = await this.agent.checkAuth();
+    if (!auth.authenticated) {
+      throw new Error(auth.error || 'Agent is not available. Check your configuration.');
+    }
+
+    const bodyExcerpt = body?.trim() ? `\nIssue body (excerpt):\n${body.trim().slice(0, 500)}\n` : '';
+    const prompt = `Generate a git branch slug for this GitHub issue.
+
+Issue title: ${title}
+${bodyExcerpt}
+RULES:
+- 2-4 words, kebab-case, lowercase letters and digits only
+- Describe the change itself, not the component (no "cli"/"api" prefixes)
+- Imperative mood: "add-retry-logic", not "retry-logic-added"
+
+Respond with ONLY the slug. No quotes, no explanation.`;
+
+    const response = await this.agent.prompt(prompt);
+    const slug = response
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .split('-')
+      .filter(Boolean)
+      .slice(0, 5)
+      .join('-')
+      .slice(0, 40)
+      .replace(/-+$/, '');
+
+    if (!slug) {
+      throw new Error('LLM returned an empty branch slug');
+    }
+    return slug;
   }
 
   /**
@@ -213,7 +335,7 @@ Respond with ONLY a valid JSON array of objects, each with "title", "body", and 
    * @returns Formatted prompt
    */
   private buildIssuePrompt(rawDescription: string): string {
-    return `You are writing an implementation spec for Claude Code. Output a GitHub issue that \`rig implement\` will execute — precision over prose.
+    return `You are writing an implementation-ready GitHub issue. Output a spec a developer or their coding agent can execute — precision over prose.
 
 Raw input:
 ${rawDescription}
