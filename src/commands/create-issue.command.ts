@@ -34,9 +34,12 @@ export class CreateIssueCommand extends BaseCommand {
   /**
    * Executes the create issue command.
    *
+   * @param options - Command options
+   * @param options.file - Read the description from this file instead of prompting
+   * @param options.yes - Skip the confirmation prompt (for non-interactive use)
    * @throws Error if preconditions fail or issue creation fails
    */
-  async execute(): Promise<void> {
+  async execute(options?: { file?: string; yes?: boolean }): Promise<void> {
     const rigConfig = this.config.get();
     const verbose = rigConfig.verbose || false;
 
@@ -73,11 +76,11 @@ export class CreateIssueCommand extends BaseCommand {
       return; // For testing
     }
 
-    // Get raw description from user
-    this.logger.info('Describe the issue in your own words (multiline input):');
-    this.logger.dim('  Press Ctrl+D when done');
-    console.log('');
-    const rawDescription = await this.promptMultiline();
+    // Get raw description from the file or the user
+    const rawDescription = await this.readMultilineInput(
+      options?.file,
+      'Describe the issue in your own words (multiline input):'
+    );
 
     if (!rawDescription.trim()) {
       this.logger.warn('No description provided. Aborting.');
@@ -106,7 +109,7 @@ export class CreateIssueCommand extends BaseCommand {
     this.displayPreview(structured.title, structured.body);
 
     // Confirm creation
-    const confirmed = await this.confirm('\nCreate this issue? (y/n): ');
+    const confirmed = options?.yes || (await this.confirm('\nCreate this issue? (y/n): '));
     if (!confirmed) {
       this.logger.warn('Issue creation cancelled.');
       return;

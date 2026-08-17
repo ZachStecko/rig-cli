@@ -4,6 +4,8 @@ import { GitService } from '../services/git.service.js';
 import { GitHubService } from '../services/github.service.js';
 import { GuardService } from '../services/guard.service.js';
 import * as readline from 'readline';
+import { readFile } from 'fs/promises';
+import { resolve } from 'path';
 
 /**
  * BaseCommand provides shared infrastructure for all CLI commands.
@@ -100,6 +102,32 @@ export abstract class BaseCommand {
         resolve(normalized === 'y' || normalized === 'yes');
       });
     });
+  }
+
+  /**
+   * Reads multiline input from a file when one is given, otherwise
+   * prompts the user interactively. The file path is resolved against
+   * the project root. Exits with an error if the file cannot be read.
+   *
+   * @param file - Optional file path to read instead of prompting
+   * @param promptText - Instruction shown before the interactive prompt
+   * @returns The input text
+   * @protected
+   */
+  protected async readMultilineInput(file: string | undefined, promptText: string): Promise<string> {
+    if (file) {
+      try {
+        return await readFile(resolve(this.projectRoot, file), 'utf-8');
+      } catch (error) {
+        this.logger.error(`Cannot read file '${file}': ${(error as Error).message}`);
+        process.exit(1);
+        return ''; // For testing
+      }
+    }
+    this.logger.info(promptText);
+    this.logger.dim('  Press Ctrl+D when done');
+    console.log('');
+    return this.promptMultiline();
   }
 
   /**

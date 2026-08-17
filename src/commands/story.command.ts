@@ -36,7 +36,14 @@ export class StoryCommand extends BaseCommand {
     this.llm = new LLMService(undefined, this.config.get(), this.projectRoot);
   }
 
-  async execute(): Promise<void> {
+  /**
+   * Executes the story command.
+   *
+   * @param options - Command options
+   * @param options.file - Read the spec from this file instead of prompting
+   * @param options.yes - Skip confirmation prompts (for non-interactive use)
+   */
+  async execute(options?: { file?: string; yes?: boolean }): Promise<void> {
     const rigConfig = this.config.get();
     const defaultLabels = rigConfig.defaultLabels || [];
 
@@ -54,11 +61,11 @@ export class StoryCommand extends BaseCommand {
       return; // For testing
     }
 
-    // Prompt for spec content
-    this.logger.info('Paste your planning spec / PRD (multiline input):');
-    this.logger.dim('  Press Ctrl+D when done');
-    console.log('');
-    const specContent = await this.promptMultiline();
+    // Get spec content from the file or the user
+    const specContent = await this.readMultilineInput(
+      options?.file,
+      'Paste your planning spec / PRD (multiline input):'
+    );
 
     if (!specContent.trim()) {
       this.logger.warn('No spec content provided. Aborting.');
@@ -86,7 +93,7 @@ export class StoryCommand extends BaseCommand {
     // Preview parent
     this.displayPreview('Parent Story', parentIssue.title, parentIssue.body);
 
-    const parentConfirmed = await this.confirm('\nCreate parent story? (y/n): ');
+    const parentConfirmed = options?.yes || (await this.confirm('\nCreate parent story? (y/n): '));
     if (!parentConfirmed) {
       this.logger.warn('Story creation cancelled.');
       return;
@@ -145,7 +152,7 @@ export class StoryCommand extends BaseCommand {
       console.log(`  - ${child.title}`);
     }
 
-    const childConfirmed = await this.confirm(`\nCreate ${childIssues.length} child issues? (y/n): `);
+    const childConfirmed = options?.yes || (await this.confirm(`\nCreate ${childIssues.length} child issues? (y/n): `));
     if (!childConfirmed) {
       this.logger.warn('Child issue creation cancelled.');
       return;

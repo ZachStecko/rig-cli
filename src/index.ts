@@ -57,20 +57,24 @@ async function loadConfig(): Promise<void> {
 program
   .command('create-issue')
   .description('Describe an issue in plain text; AI structures and files it')
-  .action(async () => {
+  .option('--file <path>', 'Read the description from a file instead of prompting')
+  .option('-y, --yes', 'Skip the confirmation prompt')
+  .action(async (options: { file?: string; yes?: boolean }) => {
     await loadConfig();
     const createIssueCommand = new CreateIssueCommand(logger, config, git, github, guard, projectRoot);
-    await createIssueCommand.execute();
+    await createIssueCommand.execute(options);
   });
 
 // Register story command
 program
   .command('story')
   .description('Decompose a planning spec into a parent story and atomic child issues')
-  .action(async () => {
+  .option('--file <path>', 'Read the spec from a file instead of prompting')
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .action(async (options: { file?: string; yes?: boolean }) => {
     await loadConfig();
     const storyCommand = new StoryCommand(logger, config, git, github, guard, projectRoot);
-    await storyCommand.execute();
+    await storyCommand.execute(options);
   });
 
 // Register grab command

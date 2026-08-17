@@ -221,6 +221,48 @@ describe('CreateIssueCommand', () => {
       expect(consoleLogSpy).toHaveBeenCalledWith(`  https://github.com/${mockRepoName}/issues/${mockIssueNumber}`);
     });
 
+    it('creates an issue from --file with --yes without any prompts', async () => {
+      const { mkdtemp, writeFile, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      const dir = await mkdtemp(join(tmpdir(), 'rig-test-'));
+      const filePath = join(dir, 'issue.md');
+      await writeFile(filePath, 'Add user authentication with OAuth');
+
+      const mockStructured = {
+        title: 'Add user authentication',
+        body: 'Implement OAuth authentication for users.',
+      };
+      mockLLMService.isAvailable.mockResolvedValue(true);
+      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
+      vi.mocked(mockGitHub.createIssue).mockResolvedValue(7);
+      vi.mocked(mockGitHub.repoName).mockResolvedValue('owner/repo');
+
+      try {
+        await command.execute({ file: filePath, yes: true });
+
+        expect(mockLLMService.structureIssue).toHaveBeenCalledWith('Add user authentication with OAuth');
+        expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+          title: mockStructured.title,
+          body: mockStructured.body,
+          labels: undefined,
+        });
+        expect(readline.createInterface).not.toHaveBeenCalled();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('exits when the --file path cannot be read', async () => {
+      mockLLMService.isAvailable.mockResolvedValue(true);
+
+      await command.execute({ file: '/nonexistent/issue.md', yes: true });
+
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('/nonexistent/issue.md'));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockLLMService.structureIssue).not.toHaveBeenCalled();
+    });
+
     it('cancels issue creation when user declines confirmation', async () => {
       const mockDescription = 'Add authentication';
       const mockStructured = {

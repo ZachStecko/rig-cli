@@ -34,18 +34,20 @@ npm install -g rig-cli
 
 ### `rig create-issue`
 
-Describe an issue in plain text. AI structures it into a proper GitHub issue with title, body, and labels, shows a preview, and files it after you confirm.
+Describe an issue in plain text. AI structures it into a proper GitHub issue with title, body, and labels, shows a preview, and files it after you confirm. For non-interactive use (scripts, coding agents), pass `--file` and `--yes`.
 
 ```bash
 rig create-issue
+rig create-issue --file issue.md --yes
 ```
 
 ### `rig story`
 
-Paste a planning spec or PRD. AI creates a parent story issue plus atomic child issues, each sized for one branch and one PR. You confirm before each step.
+Paste a planning spec or PRD. AI creates a parent story issue plus atomic child issues, each sized for one branch and one PR. You confirm before each step. For non-interactive use, pass `--file` and `--yes`.
 
 ```bash
 rig story
+rig story --file spec.md --yes
 ```
 
 ### `rig grab`
