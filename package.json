@@ -1,7 +1,7 @@
 {
   "name": "rig-cli",
-  "version": "0.2.0",
-  "description": "AI agent orchestration framework for automating the software development lifecycle with Claude AI",
+  "version": "1.2.1",
+  "description": "AI-assisted GitHub issue creation and PR opening. Plan to issue, branch to PR; you implement with your own tools.",
   "type": "module",
   "bin": {
     "rig": "./dist/index.js"
@@ -11,29 +11,20 @@
     "url": "git+https://github.com/zachstecko/rig-cli.git"
   },
   "keywords": [
-    "agent-orchestration",
-    "ai-agents",
-    "multi-agent-system",
-    "agent-framework",
-    "ai-orchestration",
-    "claude-ai",
-    "llm-orchestration",
-    "autonomous-agents",
+    "github",
+    "issues",
+    "pull-request",
+    "kimi",
     "cli",
     "automation",
-    "github",
-    "ai",
     "workflow",
-    "pipeline",
-    "development",
     "devtools",
-    "code-generation",
     "ai-powered"
   ],
   "author": "Zach Stecko",
   "license": "MIT",
   "scripts": {
-    "build": "tsc && cp -r src/templates dist/templates",
+    "build": "rm -rf dist && tsc && cp -r src/templates dist/templates && chmod +x dist/index.js",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run",
@@ -43,7 +34,6 @@
     "demo-logger": "tsx demo-logger.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.76",
     "chalk": "^5.4.1",
     "commander": "^13.1.0",
     "ora": "^8.2.0",

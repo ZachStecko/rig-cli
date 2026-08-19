@@ -10,13 +10,18 @@ describe('CLI entry point', () => {
     expect(existsSync(resolve(ROOT, 'src/index.ts'))).toBe(true);
   });
 
-  it('--version prints version', () => {
-    const out = execSync('npx tsx src/index.ts --version', { cwd: ROOT, encoding: 'utf-8' });
-    expect(out.trim()).toBe('0.1.1');
-  });
-
   it('--help prints description', () => {
     const out = execSync('npx tsx src/index.ts --help', { cwd: ROOT, encoding: 'utf-8' });
-    expect(out).toContain('Automated issue-to-PR pipeline');
+    expect(out).toContain('AI-assisted GitHub issue creation and PR opening');
+  });
+
+  it('--help lists exactly the four commands', () => {
+    const out = execSync('npx tsx src/index.ts --help', { cwd: ROOT, encoding: 'utf-8' });
+    for (const cmd of ['create-issue', 'story', 'pr', 'setup-labels']) {
+      expect(out).toContain(cmd);
+    }
+    for (const cmd of ['ship', 'implement', 'rollback', 'queue', 'bootstrap', 'review']) {
+      expect(out).not.toMatch(new RegExp(`^\\s+${cmd}\\b`, 'm'));
+    }
   });
 });

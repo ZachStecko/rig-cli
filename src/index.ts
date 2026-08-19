@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * rig-cli: Automated issue-to-PR pipeline using Claude Code
+ * rig-cli: AI-assisted GitHub issue creation and PR opening.
  *
- * This is the main entry point for the CLI. Commands will be registered here
- * as they are implemented.
+ * Two jobs: turn plans into well-formed GitHub issues, and turn finished
+ * branches into well-formed pull requests. Implementation happens outside
+ * rig, with whatever coding tool the user prefers.
  */
 import { Command } from 'commander';
 import { readFileSync } from 'fs';
@@ -11,23 +12,15 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { Logger } from './services/logger.service.js';
 import { ConfigManager } from './services/config-manager.service.js';
-import { StateManager } from './services/state-manager.service.js';
 import { GitService } from './services/git.service.js';
 import { GitHubService } from './services/github.service.js';
 import { GuardService } from './services/guard.service.js';
-import { StatusCommand } from './commands/status.command.js';
-import { QueueCommand } from './commands/queue.command.js';
-import { NextCommand } from './commands/next.command.js';
-import { ResetCommand } from './commands/reset.command.js';
-import { RollbackCommand } from './commands/rollback.command.js';
-import { ImplementCommand } from './commands/implement.command.js';
-import { TestCommand } from './commands/test.command.js';
-// import { DemoCommand } from './commands/demo.command.js'; // DISABLED: Demo feature disabled for redesign
 import { PrCommand } from './commands/pr.command.js';
-import { ReviewCommand } from './commands/review.command.js';
-import { ShipCommand } from './commands/ship.command.js';
-import { BootstrapCommand } from './commands/bootstrap.command.js';
 import { CreateIssueCommand } from './commands/create-issue.command.js';
+import { SetupLabelsCommand } from './commands/setup-labels.command.js';
+import { StoryCommand } from './commands/story.command.js';
+import { GrabCommand } from './commands/grab.command.js';
+import { BranchCommand } from './commands/branch.command.js';
 
 // Read version from package.json
 const __filename = fileURLToPath(import.meta.url);
@@ -40,181 +33,106 @@ const program = new Command();
 
 program
   .name('rig')
-  .description('Automated issue-to-PR pipeline using Claude Code')
+  .description('AI-assisted GitHub issue creation and PR opening')
   .version(packageJson.version);
 
 // Initialize services
 const projectRoot = process.cwd();
 const logger = new Logger();
 const config = new ConfigManager(projectRoot);
-const state = new StateManager(projectRoot);
 const git = new GitService(projectRoot);
 const github = new GitHubService(projectRoot);
-const guard = new GuardService(git, github, state);
+const guard = new GuardService(github);
 
-// Register status command
+async function loadConfig(): Promise<void> {
+  await config.load();
+  logger.setVerbose(config.get().verbose || false);
+  const baseBranch = config.get().git?.base_branch;
+  if (baseBranch) {
+    git.setBaseBranch(baseBranch);
+  }
+}
+
+// Register create-issue command
 program
-  .command('status')
-  .description('Display current pipeline status')
-  .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const statusCommand = new StatusCommand(logger, config, state, git, github, guard, projectRoot);
-    await statusCommand.execute();
+  .command('create-issue')
+  .description('Describe an issue in plain text; AI structures and files it')
+  .option('--file <path>', 'Read the description from a file instead of prompting')
+  .option('-y, --yes', 'Skip the confirmation prompt')
+  .action(async (options: { file?: string; yes?: boolean }) => {
+    await loadConfig();
+    const createIssueCommand = new CreateIssueCommand(logger, config, git, github, guard, projectRoot);
+    await createIssueCommand.execute(options);
   });
 
-// Register queue command
+// Register story command
 program
-  .command('queue')
-  .description('Display prioritized issue backlog')
-  .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
-  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const queueCommand = new QueueCommand(logger, config, state, git, github, guard, projectRoot);
-    await queueCommand.execute(options);
+  .command('story')
+  .description('Decompose a planning spec into a parent story and atomic child issues')
+  .option('--file <path>', 'Read the spec from a file instead of prompting')
+  .option('-y, --yes', 'Skip confirmation prompts')
+  .action(async (options: { file?: string; yes?: boolean }) => {
+    await loadConfig();
+    const storyCommand = new StoryCommand(logger, config, git, github, guard, projectRoot);
+    await storyCommand.execute(options);
   });
 
-// Register next command
+// Register grab command
 program
-  .command('next')
-  .description('Pick the next issue from the queue and initialize pipeline')
-  .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
-  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const nextCommand = new NextCommand(logger, config, state, git, github, guard, projectRoot);
-    await nextCommand.execute(options);
+  .command('grab')
+  .description("Copy an issue's title and body to the clipboard for your coding tool")
+  .argument('[issue]', 'Issue number to copy (omit to pick from open issues)')
+  .action(async (issueArg?: string) => {
+    await loadConfig();
+    const grabCommand = new GrabCommand(logger, config, git, github, guard, projectRoot);
+    await grabCommand.execute(issueArg);
   });
 
-// Register reset command
+// Register branch command
 program
-  .command('reset')
-  .description('Abort current pipeline and clean up state')
-  .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const resetCommand = new ResetCommand(logger, config, state, git, github, guard, projectRoot);
-    await resetCommand.execute();
+  .command('branch')
+  .description('Create (or switch to) the issue-<n>-<slug> branch off the base branch')
+  .argument('<issue>', 'Issue number to branch for')
+  .action(async (issueArg: string) => {
+    await loadConfig();
+    const branchCommand = new BranchCommand(logger, config, git, github, guard, projectRoot);
+    await branchCommand.execute(issueArg);
   });
-
-// Register rollback command
-program
-  .command('rollback')
-  .description('Completely undo all work for current issue (deletes branch, closes PR, clears state)')
-  .option('--no-close-pr', 'Do not close any open PRs')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const rollbackCommand = new RollbackCommand(logger, config, state, git, github, guard, projectRoot);
-    await rollbackCommand.execute(options);
-  });
-
-// Register implement command
-program
-  .command('implement')
-  .description('Run Claude Code agent to implement the current issue')
-  .option('--issue <number>', 'Implement a specific issue number')
-  .option('--dry-run', 'Show what would be done without executing')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const implementCommand = new ImplementCommand(logger, config, state, git, github, guard, projectRoot);
-    await implementCommand.execute(options);
-  });
-
-// Register test command
-program
-  .command('test')
-  .description('Run tests for the current implementation')
-  .option('--issue <number>', 'Test a specific issue number (bypasses state)')
-  .option('--component <name>', 'Component to test (backend, frontend, devnet, fullstack)')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const testCommand = new TestCommand(logger, config, state, git, github, guard, projectRoot);
-    await testCommand.execute(options);
-  });
-
-// DISABLED: Demo feature disabled for redesign
-// // Register demo command
-// program
-//   .command('demo')
-//   .description('Record a demonstration of the implemented feature')
-//   .option('--issue <number>', 'Record demo for a specific issue number')
-//   .option('--component <name>', 'Component to demo (backend, frontend, devnet, fullstack)')
-//   .action(async (options) => {
-//     await config.load();
-//     logger.setVerbose(config.get().verbose || false);
-//     const demoCommand = new DemoCommand(logger, config, state, git, github, guard, projectRoot);
-//     await demoCommand.execute(options);
-//   });
 
 // Register pr command
 program
   .command('pr')
-  .description('Create or update pull request for the current issue')
-  .option('--issue <number>', 'Create PR for a specific issue number (bypasses state)')
-  .option('-c, --comment', 'Provide feedback on a PR with interactive prompt')
-  .option('--pr <number>', 'Specify PR number to comment on (auto-detects from branch if not provided)')
+  .description('Create or update a pull request for the current branch')
+  .option('--issue <number>', 'Linked issue number (default: parsed from branch name)')
   .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const prCommand = new PrCommand(logger, config, state, git, github, guard, projectRoot);
+    await loadConfig();
+    const prCommand = new PrCommand(logger, config, git, github, guard, projectRoot);
     await prCommand.execute(options);
   });
 
-// Register ship command
+// Register setup-labels command
 program
-  .command('ship')
-  .description('Run full issue-to-PR pipeline (pick → implement → test → pr → review)')
-  .option('--issue <number>', 'Start with a specific issue number')
-  .option('--phase <phase>', 'Filter by phase (e.g., "Phase 1: MVP")')
-  .option('--component <component>', 'Filter by component (backend, frontend, fullstack, devnet)')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const shipCommand = new ShipCommand(logger, config, state, git, github, guard, projectRoot);
-    await shipCommand.execute(options);
-  });
-
-// Register review command
-program
-  .command('review')
-  .description('Run code review using Claude Code agent')
-  .option('--issue <number>', 'Review a specific issue number')
-  .option('--pr <number>', 'Review a specific PR number')
-  .option('--dry-run', 'Show what would be done without executing')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const reviewCommand = new ReviewCommand(logger, config, state, git, github, guard, projectRoot);
-    await reviewCommand.execute(options);
-  });
-
-// Register bootstrap command
-program
-  .command('bootstrap')
-  .description('Set up test infrastructure (vitest, testing-library, msw)')
-  .option('--component <name>', 'Component to bootstrap (frontend, backend, infra, serverless, all)')
-  .action(async (options) => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const bootstrapCommand = new BootstrapCommand(logger, config, state, git, github, guard, projectRoot);
-    await bootstrapCommand.execute(options);
-  });
-
-// Register create issue command
-program
-  .command('create-issue')
-  .description('Create a new GitHub issue interactively')
+  .command('setup-labels')
+  .description('Create rig labels on GitHub repo')
   .action(async () => {
-    await config.load();
-    logger.setVerbose(config.get().verbose || false);
-    const createIssueCommand = new CreateIssueCommand(logger, config, state, git, github, guard, projectRoot);
-    await createIssueCommand.execute();
+    await loadConfig();
+    const setupLabelsCommand = new SetupLabelsCommand(logger, config, git, github, guard, projectRoot);
+    await setupLabelsCommand.execute();
   });
 
-program.parse();
+// parseAsync so async command actions are awaited; without this, thrown
+// errors (e.g. GuardError) become unhandled promise rejections with raw
+// stack traces instead of clean messages.
+program.parseAsync().catch((error: unknown) => {
+  logger.error(error instanceof Error ? error.message : String(error));
+  let verbose = false;
+  try {
+    verbose = config.get().verbose || false;
+  } catch {
+    // Config not loaded yet; stay non-verbose.
+  }
+  if (verbose && error instanceof Error && error.stack) {
+    console.error(error.stack);
+  }
+  process.exit(1);
+});

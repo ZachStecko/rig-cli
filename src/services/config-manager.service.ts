@@ -12,9 +12,9 @@ import { RigConfig, DEFAULT_CONFIG } from '../types/config.types.js';
  * Users can override individual fields without providing a complete config:
  * ```yaml
  * agent:
- *   max_turns: 100
+ *   timeout: 300
  * ```
- * This overrides only agent.max_turns while keeping all other defaults.
+ * This overrides only agent.timeout while keeping all other defaults.
  */
 export class ConfigManager {
   private projectRoot: string;
@@ -87,43 +87,6 @@ export class ConfigManager {
   }
 
   /**
-   * Gets the queue configuration section.
-   *
-   * @returns Queue configuration
-   */
-  getQueue() {
-    return this.get().queue;
-  }
-
-  /**
-   * Gets the test configuration section.
-   *
-   * @returns Test configuration
-   */
-  getTest() {
-    return this.get().test;
-  }
-
-  // DISABLED: Demo feature disabled for redesign
-  // /**
-  //  * Gets the demo configuration section.
-  //  *
-  //  * @returns Demo configuration
-  //  */
-  // getDemo() {
-  //   return this.get().demo;
-  // }
-
-  /**
-   * Gets the PR configuration section.
-   *
-   * @returns PR configuration
-   */
-  getPr() {
-    return this.get().pr;
-  }
-
-  /**
    * Deep merges two configuration objects.
    * User values override defaults at the field level.
    *
@@ -134,10 +97,10 @@ export class ConfigManager {
    *
    * @example
    * deepMerge(
-   *   { agent: { max_turns: 80 }, queue: { default_phase: null } },
-   *   { agent: { max_turns: 100 } }
+   *   { agent: { provider: 'kimi', timeout: 120 }, git: {} },
+   *   { agent: { timeout: 300 } }
    * )
-   * // Returns: { agent: { max_turns: 100 }, queue: { default_phase: null } }
+   * // Returns: { agent: { provider: 'kimi', timeout: 300 }, git: {} }
    */
   private deepMerge<T extends Record<string, any>>(
     defaults: T,

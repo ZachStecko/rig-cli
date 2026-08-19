@@ -54,50 +54,6 @@ export class GitHubService {
   }
 
   /**
-   * Lists issues from the repository with optional filters.
-   *
-   * @param options - Filter options (state, labels, assignee, etc.)
-   * @returns Array of issues
-   * @throws Error if gh command fails or JSON parsing fails
-   */
-  async listIssues(options: {
-    state?: 'open' | 'closed' | 'all';
-    labels?: string[];
-    assignee?: string;
-    limit?: number;
-  } = {}): Promise<Issue[]> {
-    const args = ['issue', 'list', '--json', 'number,title,body,labels,assignees'];
-
-    if (options.state) {
-      args.push('--state', options.state);
-    }
-
-    if (options.labels && options.labels.length > 0) {
-      // Validate all labels to prevent command injection
-      options.labels.forEach(label => this.validateLabel(label));
-      args.push('--label', options.labels.join(','));
-    }
-
-    if (options.assignee) {
-      this.validateUsername(options.assignee);
-      args.push('--assignee', options.assignee);
-    }
-
-    if (options.limit) {
-      args.push('--limit', String(options.limit));
-    }
-
-    const result = await this.gh(args.join(' '));
-    try {
-      return JSON.parse(result.stdout) as Issue[];
-    } catch (error) {
-      throw new Error(
-        `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
-      );
-    }
-  }
-
-  /**
    * Gets detailed information about an issue.
    *
    * @param issueNumber - Issue number
@@ -118,73 +74,16 @@ export class GitHubService {
   }
 
   /**
-   * Gets the body text of an issue.
+   * Lists open issues in the repo, most recently created first.
    *
-   * @param issueNumber - Issue number
-   * @returns Issue body text
-   * @throws Error if issue doesn't exist or gh command fails
+   * @param limit - Maximum number of issues to return (default: 30)
+   * @returns Array of issues with number, title, and labels
+   * @throws Error if the gh command fails
    */
-  async issueBody(issueNumber: number): Promise<string> {
-    const result = await this.gh(`issue view ${issueNumber} --json body --jq .body`);
-    return result.stdout.trim();
-  }
-
-  /**
-   * Gets the title of an issue.
-   *
-   * @param issueNumber - Issue number
-   * @returns Issue title
-   * @throws Error if issue doesn't exist or gh command fails
-   */
-  async issueTitle(issueNumber: number): Promise<string> {
-    const result = await this.gh(`issue view ${issueNumber} --json title --jq .title`);
-    return result.stdout.trim();
-  }
-
-  /**
-   * Gets the labels of an issue.
-   *
-   * @param issueNumber - Issue number
-   * @returns Array of label names
-   * @throws Error if issue doesn't exist or gh command fails
-   */
-  async issueLabels(issueNumber: number): Promise<string[]> {
-    const result = await this.gh(`issue view ${issueNumber} --json labels --jq '.labels[].name'`);
-    const labels = result.stdout
-      .trim()
-      .split('\n')
-      .filter(line => line.length > 0);
-    return labels;
-  }
-
-  /**
-   * Gets the state of an issue (open or closed).
-   *
-   * @param issueNumber - Issue number
-   * @returns Issue state ("OPEN" or "CLOSED")
-   * @throws Error if issue doesn't exist or gh command fails
-   */
-  async issueState(issueNumber: number): Promise<string> {
-    const result = await this.gh(`issue view ${issueNumber} --json state --jq .state`);
-    return result.stdout.trim();
-  }
-
-  /**
-   * Checks if an issue has an open pull request.
-   *
-   * @param issueNumber - Issue number
-   * @returns true if there's an open PR, false otherwise
-   * @throws Error if gh command fails
-   */
-  async hasOpenPr(issueNumber: number): Promise<boolean> {
-    // Search for open PRs that reference this issue number in the title or body
-    const result = await this.gh(
-      `pr list --search "${issueNumber} in:title,body" --state open --json number --limit 1`
-    );
-
+  async listOpenIssues(limit = 30): Promise<Array<Pick<Issue, 'number' | 'title' | 'labels'>>> {
+    const result = await this.gh(`issue list --state open --limit ${limit} --json number,title,labels`);
     try {
-      const prs = JSON.parse(result.stdout);
-      return Array.isArray(prs) && prs.length > 0;
+      return JSON.parse(result.stdout);
     } catch (error) {
       throw new Error(
         `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
@@ -244,7 +143,8 @@ export class GitHubService {
       if (options.labels && options.labels.length > 0) {
         // Validate all labels to prevent command injection
         options.labels.forEach(label => this.validateLabel(label));
-        args.push('--label', options.labels.join(','));
+        args.push('--label', `"${options.labels.join(',')}"`);
+
       }
 
       if (options.assignees && options.assignees.length > 0) {
@@ -359,49 +259,16 @@ export class GitHubService {
   }
 
   /**
-   * Adds a comment to a pull request.
+   * Lists all label names on the repository.
    *
-   * @param prNumber - PR number
-   * @param comment - Comment text
-   * @returns The ID of the created comment
-   * @throws Error if PR doesn't exist or comment fails
+   * @returns Array of label names
+   * @throws Error if gh command fails
    */
-  async prComment(prNumber: number, comment: string): Promise<number> {
-    // Use GitHub API to post comment directly and get the ID back
-    const repoName = await this.repoName();
-    const [owner, repo] = repoName.split('/');
-
-    // Use temporary file to avoid shell injection
-    const tmpDir = await mkdtemp(join(tmpdir(), 'rig-gh-'));
-    const commentFile = join(tmpDir, 'comment.txt');
-
+  async listLabels(): Promise<string[]> {
+    const result = await this.gh('label list --json name');
     try {
-      await writeFile(commentFile, comment, 'utf-8');
-
-      // Use gh api with proper @ syntax (no quotes around filename)
-      const result = await this.gh(
-        `api repos/${owner}/${repo}/issues/${prNumber}/comments -F body=@${commentFile} --jq .id`
-      );
-
-      return parseInt(result.stdout.trim(), 10);
-    } finally {
-      await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
-
-  /**
-   * Gets pull request details.
-   *
-   * @param prNumber - PR number
-   * @returns PR object with number, title, body, headRefName (branch)
-   * @throws Error if PR doesn't exist or gh command fails
-   */
-  async viewPr(prNumber: number): Promise<{ number: number; title: string; body?: string; headRefName: string }> {
-    const result = await this.gh(
-      `pr view ${prNumber} --json number,title,body,headRefName`
-    );
-    try {
-      return JSON.parse(result.stdout);
+      const labels = JSON.parse(result.stdout) as { name: string }[];
+      return labels.map(l => l.name);
     } catch (error) {
       throw new Error(
         `Failed to parse GitHub CLI JSON output: ${error instanceof Error ? error.message : 'unknown error'}`
@@ -410,60 +277,71 @@ export class GitHubService {
   }
 
   /**
-   * Closes a pull request.
+   * Ensures the given labels exist in the repository, creating any that are missing.
+   * Uses LABEL_DETAILS for color/description when available.
    *
-   * @param prNumber - PR number to close
-   * @param comment - Optional comment to add when closing
-   * @throws Error if PR doesn't exist or close operation fails
+   * @param labelNames - Label names to ensure exist
+   * @returns Array of label names that were created (didn't previously exist)
    */
-  async closePr(prNumber: number, comment?: string): Promise<void> {
-    // Close the PR first
-    await this.gh(`pr close ${prNumber}`);
+  async ensureLabels(labelNames: string[]): Promise<string[]> {
+    if (labelNames.length === 0) return [];
 
-    // Add comment separately if provided (reuses existing safe method)
-    if (comment) {
-      await this.prComment(prNumber, comment);
-    }
+    const existing = new Set(await this.listLabels());
+    const missing = labelNames.filter(name => !existing.has(name));
+
+    if (missing.length === 0) return [];
+
+    const { LABEL_DETAILS } = await import('../types/labels.types.js');
+    const labelsToSync = missing.map(name => {
+      const details = LABEL_DETAILS[name];
+      return details
+        ? { name, color: details.color, description: details.description }
+        : { name };
+    });
+
+    await this.syncLabels(labelsToSync);
+    return missing;
   }
 
   /**
-   * Auto-detects PR number from current branch.
+   * Syncs labels to the GitHub repository.
+   * Uses --force so existing labels are updated and missing ones are created.
    *
-   * @param branchName - Branch name to check for associated PR
-   * @returns PR number if found, null otherwise
-   * @throws Error if gh command fails
+   * @param labels - Labels to sync with name, optional color and description
+   * @returns Object with arrays of created and existing label names
    */
-  async detectPrFromBranch(branchName: string): Promise<number | null> {
-    this.validateBranchName(branchName);
-    const prs = await this.prListByHead(branchName);
+  async syncLabels(
+    labels: { name: string; color?: string; description?: string }[]
+  ): Promise<{ created: string[]; existing: string[] }> {
+    const existingLabels = await this.listLabels();
+    const existingSet = new Set(existingLabels);
 
-    if (prs.length === 0) {
-      return null;
+    const created: string[] = [];
+    const existing: string[] = [];
+
+    for (const label of labels) {
+      this.validateLabel(label.name);
+
+      const args = ['label', 'create', `"${this.escapeQuotes(label.name)}"`, '--force'];
+
+      if (label.color) {
+        args.push('--color', label.color);
+      }
+
+      if (label.description) {
+        args.push('--description', `"${this.escapeQuotes(label.description)}"`);
+      }
+
+      await this.gh(args.join(' '));
+
+      if (existingSet.has(label.name)) {
+        existing.push(label.name);
+      } else {
+        created.push(label.name);
+      }
     }
 
-    // Return first (most recent) PR for this branch
-    return prs[0].number;
-  }
-
-  /**
-   * Adds a comment to a pull request mentioning a previous comment.
-   *
-   * @param prNumber - PR number
-   * @param comment - Comment text
-   * @param inReplyTo - Optional comment ID to reference in the reply
-   * @returns The ID of the created comment
-   * @throws Error if PR doesn't exist or comment fails
-   */
-  async prCommentWithReference(prNumber: number, comment: string, inReplyTo?: number): Promise<number> {
-    let finalComment = comment;
-
-    // If replying to a specific comment, add a reference
-    if (inReplyTo) {
-      const repoName = await this.repoName();
-      finalComment = `> _In response to [comment](https://github.com/${repoName}/pull/${prNumber}#issuecomment-${inReplyTo})_\n\n${comment}`;
-    }
-
-    return this.prComment(prNumber, finalComment);
+    return { created, existing };
   }
 
   /**

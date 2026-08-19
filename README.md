@@ -2,26 +2,29 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-An orchestration layer on top of Claude Code, GitHub, and Git. You plan features with Claude Code, then rig-cli handles the grunt work — filing issues, implementing code, running tests, opening PRs, and reviewing changes.
+AI-assisted GitHub issue creation and PR opening. rig handles the chores around your code: it turns plans into well-formed GitHub issues, and finished branches into well-formed pull requests. You implement with whatever coding tool you prefer.
+
+A side benefit: every change follows a traceable path from issue to branch to pull request. That paper trail doubles as change-management evidence for compliance frameworks like SOC 2.
 
 ---
 
 ## Workflow
 
 ```
-plan → create-issue → ship → review
+rig create-issue  →  implement with your own tools  →  rig pr
 ```
 
-1. **Plan** with Claude Code in your editor. Hash out the feature, agree on an approach.
-2. **`rig create-issue`** — paste your plan, AI structures it into a GitHub issue.
-3. **`rig ship`** — picks the issue, creates a branch, implements, tests, and opens a PR.
-4. **`rig review --pr 47`** — AI reviews the diff, you triage findings, selected fixes are applied and pushed.
+1. **`rig create-issue`** — paste a plan in plain text. AI structures it into a GitHub issue with title, body, and labels.
+2. **Implement** — pick up the issue with your editor, Claude Code, Cursor, or anything else. Name the branch `issue-42-short-slug`.
+3. **`rig pr`** — pushes the branch, generates a PR body from the issue and commits, and opens (or updates) the PR.
+
+For a full spec or PRD, use **`rig story`** instead of `create-issue`. It creates one parent story issue plus a set of small, independently implementable child issues.
 
 ---
 
 ## Install
 
-**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) (`claude`), Git.
+**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: a `MOONSHOT_API_KEY` (create one at [platform.moonshot.ai](https://platform.moonshot.ai)).
 
 ```bash
 npm install -g rig-cli
@@ -29,160 +32,113 @@ npm install -g rig-cli
 
 ---
 
-## Configuration
-
-Create `.rig.yml` in your project root:
-
-```yaml
-agent:
-  provider: binary        # 'binary' (Claude CLI, default) or 'sdk' (API key)
-  max_turns: 80
-  permission_mode: bypassPermissions  # default | bypassPermissions | acceptEdits | dontAsk | plan | auto
-
-queue:
-  default_phase: null      # e.g. "Phase 1: MVP"
-  default_component: null  # e.g. "backend"
-
-test:
-  require_new_tests: true
-
-pr:
-  draft: false
-  reviewers: []            # ["username1", "username2"]
-
-components:
-  frontend:
-    path: ./frontend
-    test_command: npm test
-  backend:
-    path: ./backend
-    test_command: go test ./...
-
-verbose: false
-```
-
-All fields are optional. Missing values use defaults.
-
----
-
 ## Commands
 
-### `rig ship`
+### `rig create-issue`
 
-Full pipeline: pick issue → branch → implement → test → PR → review. Resumes from last stage if interrupted.
+Describe an issue in plain text. AI structures it into a proper GitHub issue with title, body, and labels, shows a preview, and files it after you confirm. For non-interactive use (scripts, coding agents), pass `--file` and `--yes`.
 
 ```bash
-rig ship
-rig ship --issue 42
-rig ship --phase "Phase 1: MVP" --component backend
+rig create-issue
+rig create-issue --file issue.md --yes
 ```
 
-### `rig next`
+### `rig story`
 
-Pick the next issue from the priority queue and create a feature branch.
+Paste a planning spec or PRD. AI creates a parent story issue plus atomic child issues, each sized for one branch and one PR. You confirm before each step. For non-interactive use, pass `--file` and `--yes`.
 
 ```bash
-rig next
-rig next --phase "Phase 2" --component frontend
+rig story
+rig story --file spec.md --yes
 ```
 
-### `rig implement`
+### `rig grab`
 
-Run the implementation agent for the current or specified issue.
+Copy an issue's title and body to the clipboard, ready to paste into your coding tool (Claude Code, Cursor, etc.). With no argument, lists open issues and prompts you to pick one. Prints the issue instead if no clipboard is available.
 
 ```bash
-rig implement
-rig implement --issue 42
-rig implement --dry-run
+rig grab 42
+rig grab      # pick from open issues
 ```
 
-### `rig test`
+### `rig branch`
 
-Run the test suite. Auto-retries with a fix agent on failures (up to 3 attempts).
+Create a working branch for an issue off the latest base branch (fetched from origin when available), then push it to origin with upstream tracking. Branches follow `<type>/issue-<n>-<slug>` in lowercase kebab-case: the type comes from the issue's type label (`bug` → `fix`, `feature` → `feat`, etc.), and the slug is written by the AI from the issue content (falls back to a title-derived slug). If a branch for the issue already exists, switches to it instead.
+
+```
+fix/issue-21-handle-empty-clipboard
+feat/issue-34-add-issue-picker
+```
 
 ```bash
-rig test
-rig test --issue 42 --component backend
+rig branch 21
 ```
 
 ### `rig pr`
 
-Create or update a pull request. Use `-c` to post feedback and auto-fix.
+Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history.
+
+Date-like branch names (`2025-08-cleanup`, `8-15-hotfix`) are not treated as issue numbers — pass `--issue` for those. The command refuses to run on `main`, `master`, or the configured base branch.
 
 ```bash
 rig pr
 rig pr --issue 42
-rig pr -c              # interactive feedback → AI fixes → push
-rig pr -c --pr 123
 ```
 
-### `rig review`
+### `rig setup-labels`
 
-AI code review with interactive triage and auto-fix.
-
-```bash
-rig review
-rig review --issue 42
-rig review --pr 100
-rig review --dry-run
-```
-
-### `rig create-issue`
-
-Describe an issue in plain text. AI structures it into a proper GitHub issue with title and body.
+Create rig's label set on the GitHub repo. Safe to run more than once.
 
 ```bash
-rig create-issue
-```
-
-### `rig queue`
-
-Display the prioritized issue backlog.
-
-```bash
-rig queue
-rig queue --phase "Phase 1: MVP" --component backend --limit 20
-```
-
-### `rig status`
-
-Show current pipeline state (issue, stage, branch, progress).
-
-### `rig reset`
-
-Clear pipeline state. Keeps the branch and code intact.
-
-### `rig rollback`
-
-Undo everything: close PR, delete branch (local + remote), clear state.
-
-```bash
-rig rollback
-rig rollback --no-close-pr
-```
-
-### `rig bootstrap`
-
-Set up test infrastructure (Vitest, Testing Library, MSW).
-
-```bash
-rig bootstrap
-rig bootstrap --component frontend
+rig setup-labels
 ```
 
 ---
 
-## Agent Providers
+## Configuration
 
-**Binary** (default): Spawns the official `claude` CLI binary. Works with a Claude Max subscription. No API key needed.
+Create `.rig.yml` in your project root. All fields are optional; missing values use defaults.
 
-**SDK**: Uses the Anthropic API directly. Requires `ANTHROPIC_API_KEY`. Set `provider: sdk` in `.rig.yml`.
+```yaml
+agent:
+  provider: kimi     # 'kimi' (Moonshot API, default)
+  model: kimi-k3     # model ID to request (default: kimi-k3)
+  timeout: 120       # seconds per AI call
+
+git:
+  base_branch: main  # auto-detected if omitted (main or master)
+
+defaultLabels: []    # labels added to every created issue
+
+# Optional: a markdown style guide injected into every AI prompt, so
+# generated issues follow your writing rules. Relative to the project
+# root; ~/ expands to your home directory.
+style_file: ~/style/writing-rules.md
+
+verbose: false
+```
+
+---
+
+## Claude Code skill
+
+The repo ships an agent-facing skill at [`.claude/skills/rig/SKILL.md`](./.claude/skills/rig/SKILL.md) that teaches Claude Code the rig workflow: which commands to run for "pick up issue 22" or "open a PR", and which flags (`--file`, `--yes`) keep the interactive commands from hanging under an agent. Copy the `rig` folder into your own project's `.claude/skills/` directory to use it there.
+
+---
+
+## AI Providers
+
+**Kimi** (default): Moonshot AI's Kimi models over the OpenAI-compatible chat-completions API. Requires `MOONSHOT_API_KEY`. Defaults to `kimi-k3`; override with `agent.model` in `.rig.yml`.
+
+Providers are small subclasses of `OpenAICompatProvider` (`src/services/llm-provider.ts`) — adding another vendor is a name, base URL, API-key env var, and default model.
+
+AI is used only for text generation — issue bodies and spec decomposition. rig never runs an agent on your code.
 
 ---
 
 ## Disclaimer
 
-rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Anthropic. You must have your own Claude subscription or API key and comply with [Anthropic's Terms of Service](https://www.anthropic.com/legal/consumer-terms).
+rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Moonshot AI. You must have your own API key and comply with your model provider's terms of service.
 
 ## License
 

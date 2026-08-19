@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BaseCommand } from '../../src/commands/base-command.js';
 import { Logger } from '../../src/services/logger.service.js';
 import { ConfigManager } from '../../src/services/config-manager.service.js';
-import { StateManager } from '../../src/services/state-manager.service.js';
 import { GitService } from '../../src/services/git.service.js';
 import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
@@ -32,10 +31,6 @@ class TestCommand extends BaseCommand {
     return this.config;
   }
 
-  public getState(): StateManager {
-    return this.state;
-  }
-
   public getGit(): GitService {
     return this.git;
   }
@@ -56,7 +51,6 @@ class TestCommand extends BaseCommand {
 describe('BaseCommand', () => {
   let mockLogger: Logger;
   let mockConfig: ConfigManager;
-  let mockState: StateManager;
   let mockGit: GitService;
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
@@ -74,11 +68,6 @@ describe('BaseCommand', () => {
       get: vi.fn(),
     } as any;
 
-    mockState = {
-      load: vi.fn(),
-      save: vi.fn(),
-    } as any;
-
     mockGit = {
       currentBranch: vi.fn(),
       status: vi.fn(),
@@ -90,8 +79,7 @@ describe('BaseCommand', () => {
     } as any;
 
     mockGuard = {
-      checkGitRepository: vi.fn(),
-      checkGitHubAuth: vi.fn(),
+      requireGhAuth: vi.fn(),
     } as any;
   });
 
@@ -100,7 +88,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -108,7 +95,6 @@ describe('BaseCommand', () => {
 
       expect(command.getLogger()).toBe(mockLogger);
       expect(command.getConfig()).toBe(mockConfig);
-      expect(command.getState()).toBe(mockState);
       expect(command.getGit()).toBe(mockGit);
       expect(command.getGitHub()).toBe(mockGitHub);
       expect(command.getGuard()).toBe(mockGuard);
@@ -118,7 +104,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -132,7 +117,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard,
@@ -148,7 +132,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -164,7 +147,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -182,7 +164,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -200,7 +181,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -214,7 +194,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -227,7 +206,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -240,7 +218,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -256,7 +233,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -271,7 +247,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -282,26 +257,10 @@ describe('BaseCommand', () => {
       expect(mockConfig.get).toHaveBeenCalled();
     });
 
-    it('allows subclasses to access state', () => {
-      const command = new TestCommand(
-        mockLogger,
-        mockConfig,
-        mockState,
-        mockGit,
-        mockGitHub,
-        mockGuard
-      );
-
-      command.getState().load();
-
-      expect(mockState.load).toHaveBeenCalled();
-    });
-
     it('allows subclasses to access git service', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -316,7 +275,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
@@ -331,15 +289,14 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
       );
 
-      command.getGuard().checkGitRepository();
+      command.getGuard().requireGhAuth();
 
-      expect(mockGuard.checkGitRepository).toHaveBeenCalled();
+      expect(mockGuard.requireGhAuth).toHaveBeenCalled();
     });
   });
 
@@ -350,7 +307,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard,
@@ -365,7 +321,6 @@ describe('BaseCommand', () => {
       const command = new TestCommand(
         mockLogger,
         mockConfig,
-        mockState,
         mockGit,
         mockGitHub,
         mockGuard
