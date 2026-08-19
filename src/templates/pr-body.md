@@ -4,6 +4,10 @@
 
 Closes #{{issue_number}}
 
+## What This Solves
+
+{{issue_problem}}
+
 ## What Changed
 
 {{commit_log}}

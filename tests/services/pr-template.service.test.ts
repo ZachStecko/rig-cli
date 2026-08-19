@@ -61,6 +61,7 @@ describe('PrTemplateService', () => {
       expect(vars.issue_context).toContain('Users can log in');
       expect(vars.commit_log).toBe('- abc123 Initial commit\n- def456 Add tests');
       expect(vars.manual_test_steps).toBeDefined();
+      expect(vars.issue_problem).toBeDefined();
     });
 
     it('handles empty commit log', async () => {
@@ -89,6 +90,17 @@ describe('PrTemplateService', () => {
       expect(vars.issue_summary).not.toContain('Second paragraph');
     });
 
+    it('returns title when body opens with a non-summary heading', async () => {
+      await service.generatePrBody(
+        makeIssue({
+          title: 'Fix session expiry',
+          body: '## Problem / Motivation\nSessions expire too fast.',
+        })
+      );
+
+      expect(renderedVars().issue_summary).toBe('Fix session expiry');
+    });
+
     it('limits summary to first 5 lines', async () => {
       await service.generatePrBody(
         makeIssue({ body: 'Line 1\nLine 2\nLine 3\nLine 4\nLine 5\nLine 6\nLine 7' })
@@ -97,6 +109,79 @@ describe('PrTemplateService', () => {
       const vars = renderedVars();
       expect(vars.issue_summary).toBe('Line 1\nLine 2\nLine 3\nLine 4\nLine 5');
       expect(vars.issue_summary).not.toContain('Line 6');
+    });
+  });
+
+  describe('extractProblem', () => {
+    it('returns fallback when body is empty', async () => {
+      await service.generatePrBody(makeIssue({ number: 10, body: '' }));
+
+      expect(renderedVars().issue_problem).toBe(
+        'See issue #10 for the problem this change addresses.'
+      );
+    });
+
+    it('extracts the Problem / Motivation section', async () => {
+      await service.generatePrBody(
+        makeIssue({
+          body: `## Problem / Motivation
+Login sessions expire after 5 minutes, logging users out mid-task.
+
+## Implementation Details
+Bump the session TTL.`,
+        })
+      );
+
+      const vars = renderedVars();
+      expect(vars.issue_problem).toBe(
+        'Login sessions expire after 5 minutes, logging users out mid-task.'
+      );
+      expect(vars.issue_problem).not.toContain('Implementation');
+    });
+
+    it('uses the whole problem section without truncation', async () => {
+      await service.generatePrBody(
+        makeIssue({
+          body: `## Problem / Motivation
+Paragraph one.
+
+Paragraph two.
+
+Paragraph three.
+
+## Acceptance Criteria
+- Done`,
+        })
+      );
+
+      expect(renderedVars().issue_problem).toBe(
+        'Paragraph one.\n\nParagraph two.\n\nParagraph three.'
+      );
+    });
+
+    it('falls back to prose before the first heading', async () => {
+      await service.generatePrBody(
+        makeIssue({
+          body: `The CLI crashes on startup when the config file is missing.
+
+## Implementation Details
+Add a guard.`,
+        })
+      );
+
+      expect(renderedVars().issue_problem).toBe(
+        'The CLI crashes on startup when the config file is missing.'
+      );
+    });
+
+    it('returns fallback when the body has headings but no leading prose or problem section', async () => {
+      await service.generatePrBody(
+        makeIssue({ number: 14, body: `## Implementation Details\nAdd a guard.` })
+      );
+
+      expect(renderedVars().issue_problem).toBe(
+        'See issue #14 for the problem this change addresses.'
+      );
     });
   });
 
@@ -127,6 +212,26 @@ Some implementation notes`,
       expect(vars.issue_context).toContain('Users can login');
       expect(vars.issue_context).toContain('Sessions persist');
       expect(vars.issue_context).not.toContain('Implementation');
+    });
+
+    it('extracts H2 Acceptance Criteria section (rig-structured issues)', async () => {
+      await service.generatePrBody(
+        makeIssue({
+          body: `## Problem / Motivation
+Something is broken.
+
+## Acceptance Criteria
+- Users can login
+
+## Notes
+Extra notes`,
+        })
+      );
+
+      const vars = renderedVars();
+      expect(vars.issue_context).toContain('## Acceptance Criteria');
+      expect(vars.issue_context).toContain('Users can login');
+      expect(vars.issue_context).not.toContain('Extra notes');
     });
 
     it('extracts Implementation section if no Acceptance Criteria', async () => {

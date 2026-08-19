@@ -120,6 +120,12 @@ verbose: false
 
 ---
 
+## Claude Code skill
+
+The repo ships an agent-facing skill at [`.claude/skills/rig/SKILL.md`](./.claude/skills/rig/SKILL.md) that teaches Claude Code the rig workflow: which commands to run for "pick up issue 22" or "open a PR", and which flags (`--file`, `--yes`) keep the interactive commands from hanging under an agent. Copy the `rig` folder into your own project's `.claude/skills/` directory to use it there.
+
+---
+
 ## AI Providers
 
 **Kimi** (default): Moonshot AI's Kimi models over the OpenAI-compatible chat-completions API. Requires `MOONSHOT_API_KEY`. Defaults to `kimi-k3`; override with `agent.model` in `.rig.yml`.

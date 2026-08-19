@@ -224,7 +224,7 @@ RULES:
 - Each issue must be small and focused — one concern per issue.
 - Order issues by implementation dependency (foundational work first).
 - Every issue body must start with "Parent story: #${parentIssueNumber}" on the first line, followed by a blank line.
-- Use the same issue body format: ## Problem / Motivation, ## Implementation Details, ## Testing Strategy, ## Acceptance Criteria. Skip sections that don't apply.
+- Use the same issue body format: ## Problem / Motivation (2 paragraphs max), ## Implementation Details, ## Testing Strategy, ## Acceptance Criteria. Skip sections that don't apply.
 - Titles: imperative, 50-80 chars, with component prefix if clear (cli: / api: / ui: / etc.)
 - No filler prose. Senior engineer to senior engineer tone.
 ${styleSection}
@@ -347,7 +347,7 @@ TITLE:
 BODY — Use exactly these H2 sections in order. Skip a section entirely if it does not apply:
 
 ## Problem / Motivation
-Concrete symptom or gap in 2-3 sentences.
+Concrete symptom or gap — what this solves or helps fix. 2 paragraphs max; this section is reused verbatim in the PR body.
 
 ## Implementation Details
 WHAT to build. Be prescriptive:
