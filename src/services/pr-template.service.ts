@@ -47,6 +47,9 @@ export class PrTemplateService {
     // Build issue context (acceptance criteria or implementation section)
     const issueContext = this.extractContext(issue.body || '', issueNumber);
 
+    // Build the short "what this solves" explanation from the issue
+    const issueProblem = this.extractProblem(issue.body || '', issueNumber);
+
     // Get commit log
     const commitLog = await this.git.logVsMaster();
     const formattedCommitLog = commitLog
@@ -71,6 +74,7 @@ export class PrTemplateService {
       issue_number: issueNumber,
       issue_summary: issueSummary,
       issue_context: issueContext,
+      issue_problem: issueProblem,
       commit_log: formattedCommitLog || '- No commits',
       manual_test_steps: manualTestSteps,
     };
@@ -94,7 +98,7 @@ export class PrTemplateService {
 
     // First, look for an explicit "Summary", "Description", or "Overview" section
     const summaryMatch = body.match(
-      /(###?\s+(Summary|Description|Overview)[\s\S]*?)(?=\n###|$)/i
+      /(###?\s+(Summary|Description|Overview)[\s\S]*?)(?=\n##|$)/i
     );
 
     if (summaryMatch) {
@@ -111,11 +115,52 @@ export class PrTemplateService {
       }
     }
 
-    // Fallback: Get first paragraph (up to first empty line)
+    // Fallback: Get first paragraph (up to first empty line). A body that
+    // opens with some other heading has no summary prose — use the title,
+    // so the heading text is not swallowed into the Summary section.
     const firstParagraph = body.split('\n\n')[0];
+    if (/^\s*#/.test(firstParagraph)) {
+      return title;
+    }
     const lines = firstParagraph.split('\n').slice(0, 5);
 
     return lines.join('\n').trim() || title;
+  }
+
+  /**
+   * Extracts a short explanation of what the issue solves or helps fix.
+   *
+   * Prefers the issue's Problem / Motivation section (rig-structured issues
+   * always have one — the issue-writing prompt directs the LLM to keep it
+   * to two paragraphs, so the section is used whole); falls back to the
+   * prose before the first heading.
+   *
+   * @private
+   * @param body - Issue body text
+   * @param issueNumber - Issue number (for fallback message)
+   * @returns Explanation text
+   */
+  private extractProblem(body: string, issueNumber: number): string {
+    const fallback = `See issue #${issueNumber} for the problem this change addresses.`;
+    if (!body) {
+      return fallback;
+    }
+
+    // Prefer an explicit problem/motivation-style section
+    const problemMatch = body.match(
+      /#{2,3}\s+(?:Problem(?:\s*\/\s*Motivation)?|Motivation|Background|Context)[^\n]*\n([\s\S]*?)(?=\n#{1,3}\s|$)/i
+    );
+
+    // Fall back to the prose before the first heading; a body that opens
+    // with some other heading has no leading prose to use
+    const source = problemMatch
+      ? problemMatch[1]
+      : /^\s*#{1,3}\s/.test(body)
+        ? ''
+        : body.split(/\n#{1,3}\s/)[0];
+
+    const trimmed = source.trim();
+    return trimmed.length > 0 ? trimmed : fallback;
   }
 
   /**
@@ -131,9 +176,10 @@ export class PrTemplateService {
       return `See issue #${issueNumber} for full details.`;
     }
 
-    // Look for "Acceptance Criteria" section (include heading)
+    // Look for "Acceptance Criteria" section (include heading; H2 or H3 —
+    // rig-structured issues use H2 sections)
     const acceptanceCriteriaMatch = body.match(
-      /(### Acceptance Criteria[\s\S]*?)(?=\n###|$)/i
+      /(#{2,3} Acceptance Criteria[\s\S]*?)(?=\n##|$)/i
     );
     if (acceptanceCriteriaMatch) {
       return acceptanceCriteriaMatch[1].trim().split('\n').slice(0, 15).join('\n');
@@ -141,7 +187,7 @@ export class PrTemplateService {
 
     // Look for "Implementation" section (include heading)
     const implementationMatch = body.match(
-      /(### Implementation[\s\S]*?)(?=\n###|$)/i
+      /(#{2,3} Implementation[\s\S]*?)(?=\n##|$)/i
     );
     if (implementationMatch) {
       return implementationMatch[1].trim().split('\n').slice(0, 15).join('\n');
