@@ -1,0 +1,502 @@
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { LLMService, StructuredIssue } from '../../src/services/llm.service.js';
+import { LLMProvider } from '../../src/services/llm-provider.js';
+import { writeFile, mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
+describe('LLMService', () => {
+  let llmService: LLMService;
+  let mockAgent: LLMProvider;
+
+  beforeEach(() => {
+    mockAgent = {
+      name: 'Mock Provider',
+      isAvailable: vi.fn(),
+      checkAuth: vi.fn(),
+      prompt: vi.fn(),
+    } as any;
+
+    llmService = new LLMService(mockAgent);
+  });
+
+  describe('isAvailable', () => {
+    it('returns true when agent is available', async () => {
+      vi.mocked(mockAgent.isAvailable).mockResolvedValue(true);
+
+      const result = await llmService.isAvailable();
+
+      expect(result).toBe(true);
+      expect(mockAgent.isAvailable).toHaveBeenCalled();
+    });
+
+    it('returns false when agent is not available', async () => {
+      vi.mocked(mockAgent.isAvailable).mockResolvedValue(false);
+
+      const result = await llmService.isAvailable();
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('structureIssue', () => {
+    beforeEach(() => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: true,
+        error: null,
+      });
+    });
+
+    it('throws error when agent is not authenticated', async () => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: false,
+        error: 'API key not set',
+      });
+
+      await expect(
+        llmService.structureIssue('Add authentication')
+      ).rejects.toThrow('API key not set');
+    });
+
+    it('parses valid JSON response from agent', async () => {
+      const mockResponse = JSON.stringify({
+        title: 'feat: Add user authentication',
+        body: 'Implementation details here',
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.structureIssue('Add authentication');
+
+      expect(result).toEqual({
+        title: 'feat: Add user authentication',
+        body: 'Implementation details here',
+      });
+    });
+
+    it('strips markdown code fences from response', async () => {
+      const mockResponse = '```json\n{"title": "Add auth", "body": "Details"}\n```';
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.structureIssue('Add authentication');
+
+      expect(result).toEqual({
+        title: 'Add auth',
+        body: 'Details',
+      });
+    });
+
+    it('extracts JSON from response with preamble text', async () => {
+      const mockResponse = 'Sure, here is the structured issue:\n{"title": "Add auth", "body": "Details"}';
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.structureIssue('Add authentication');
+
+      expect(result).toEqual({
+        title: 'Add auth',
+        body: 'Details',
+      });
+    });
+
+    it('throws error when response has no JSON', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('This is just text without JSON');
+
+      await expect(
+        llmService.structureIssue('Add authentication')
+      ).rejects.toThrow('Failed to parse structured issue response');
+    });
+
+    it('throws error when title is empty', async () => {
+      const mockResponse = JSON.stringify({
+        title: '',
+        body: 'Details',
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await expect(
+        llmService.structureIssue('Add authentication')
+      ).rejects.toThrow('LLM returned an empty title');
+    });
+
+    it('throws error when body is empty', async () => {
+      const mockResponse = JSON.stringify({
+        title: 'Add auth',
+        body: '',
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await expect(
+        llmService.structureIssue('Add authentication')
+      ).rejects.toThrow('LLM returned an empty body');
+    });
+
+    it('truncates title exceeding GitHub limit', async () => {
+      const longTitle = 'a'.repeat(300);
+      const mockResponse = JSON.stringify({
+        title: longTitle,
+        body: 'Details',
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.structureIssue('Add authentication');
+
+      expect(result.title.length).toBe(256);
+      expect(result.title).toMatch(/\.\.\.$/);
+    });
+
+    it('builds prompt with code fence instructions', async () => {
+      const mockResponse = JSON.stringify({
+        title: 'Add auth',
+        body: 'Details',
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.structureIssue('Add authentication');
+
+      expect(mockAgent.prompt).toHaveBeenCalled();
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+
+      // Verify prompt includes instructions for proper code fences
+      expect(promptArg).toContain('```typescript');
+      expect(promptArg).toContain('ALWAYS use ```language code fences');
+    });
+
+    it('generates body with proper code fence formatting when LLM responds correctly', async () => {
+      const bodyWithCodeFence = `## Implementation Details
+Create a new authentication service.
+
+\`\`\`typescript
+export class AuthService {
+  async login(username: string, password: string) {
+    // implementation
+  }
+}
+\`\`\`
+
+## Testing Strategy
+- Test login flow
+- Test invalid credentials`;
+
+      const mockResponse = JSON.stringify({
+        title: 'feat: Add authentication service',
+        body: bodyWithCodeFence,
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.structureIssue('Add user authentication with JWT');
+
+      expect(result.body).toContain('```typescript');
+      expect(result.body).toContain('```');
+      expect(result.body).toMatch(/```typescript[\s\S]*?```/);
+    });
+
+    it('prompt explicitly forbids outputting language name without backticks', async () => {
+      const mockResponse = JSON.stringify({
+        title: 'Add auth',
+        body: 'Details',
+      });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.structureIssue('Add authentication');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('never just "typescript" without backticks');
+    });
+  });
+
+  describe('decomposeStory', () => {
+    beforeEach(() => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: true,
+        error: null,
+      });
+    });
+
+    it('throws error when agent is not authenticated', async () => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: false,
+        error: 'API key not set',
+      });
+
+      await expect(
+        llmService.decomposeStory('spec content', 1)
+      ).rejects.toThrow('API key not set');
+    });
+
+    it('parses valid JSON array response', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'cli: Add story label', body: 'Parent story: #5\n\nAdd label.', labels: ['backend'] },
+        { title: 'cli: Add decompose method', body: 'Parent story: #5\n\nAdd method.', labels: ['backend'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec content', 5);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].title).toBe('cli: Add story label');
+      expect(result[1].title).toBe('cli: Add decompose method');
+    });
+
+    it('extracts JSON array from response with preamble', async () => {
+      const mockResponse = 'Here are the issues:\n[{"title": "Add auth", "body": "Details.", "labels": []}]';
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].title).toBe('Add auth');
+    });
+
+    it('throws error when response has no JSON array', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('Just some text without JSON');
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('Failed to parse decomposed issues response');
+    });
+
+    it('throws error when response is empty array', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('[]');
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('LLM returned no child issues from spec decomposition');
+    });
+
+    it('throws error when a child issue has empty title', async () => {
+      const mockResponse = JSON.stringify([
+        { title: '', body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('LLM returned a child issue with an empty title');
+    });
+
+    it('throws error when a child issue has empty body', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: '', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await expect(
+        llmService.decomposeStory('spec', 1)
+      ).rejects.toThrow('LLM returned a child issue with an empty body');
+    });
+
+    it('truncates child issue titles exceeding GitHub limit', async () => {
+      const longTitle = 'a'.repeat(300);
+      const mockResponse = JSON.stringify([
+        { title: longTitle, body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].title.length).toBe(256);
+      expect(result[0].title).toMatch(/\.\.\.$/);
+    });
+
+    it('filters invalid labels from child issues', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Details.', labels: ['backend', 'invalid-label', 'feature'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].labels).toEqual(['backend', 'feature']);
+      expect(result[0].labels).not.toContain('invalid-label');
+    });
+
+    it('filters reserved labels from child issues', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Details.', labels: ['backend', 'story', 'rig-created', 'feature'] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      const result = await llmService.decomposeStory('spec', 1);
+
+      expect(result[0].labels).toEqual(['backend', 'feature']);
+    });
+
+    it('includes parent issue number in prompt', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add auth', body: 'Parent story: #42\n\nDetails.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.decomposeStory('spec content', 42);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('#42');
+    });
+
+    it('includes spec content in prompt', async () => {
+      const specContent = '# My Feature\n\nDetailed requirements here.';
+      const mockResponse = JSON.stringify([
+        { title: 'Add feature', body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.decomposeStory(specContent, 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain(specContent);
+    });
+
+    it('prompt instructs not to add features beyond spec', async () => {
+      const mockResponse = JSON.stringify([
+        { title: 'Add feature', body: 'Details.', labels: [] },
+      ]);
+      vi.mocked(mockAgent.prompt).mockResolvedValue(mockResponse);
+
+      await llmService.decomposeStory('spec', 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('Do not add features, enhancements, or nice-to-haves beyond what the spec explicitly details');
+    });
+  });
+
+  describe('style guide injection', () => {
+    let tempDir: string;
+
+    beforeEach(async () => {
+      tempDir = await mkdtemp(join(tmpdir(), 'rig-style-'));
+    });
+
+    afterEach(async () => {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    });
+
+    const validResponse = JSON.stringify({ title: 'Add auth', body: 'Details.', labels: [] });
+    const validArrayResponse = JSON.stringify([{ title: 'Add auth', body: 'Details.', labels: [] }]);
+
+    it('injects the style file into the structureIssue prompt', async () => {
+      const styleFile = join(tempDir, 'style.md');
+      await writeFile(styleFile, 'Use short sentences. No idioms.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: styleFile }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('STYLE GUIDE (mandatory)');
+      expect(promptArg).toContain('Use short sentences. No idioms.');
+    });
+
+    it('injects the style file into the decomposeStory prompt', async () => {
+      const styleFile = join(tempDir, 'style.md');
+      await writeFile(styleFile, 'Use short sentences. No idioms.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: styleFile }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validArrayResponse);
+
+      await service.decomposeStory('spec', 1);
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('STYLE GUIDE (mandatory)');
+      expect(promptArg).toContain('Use short sentences. No idioms.');
+    });
+
+    it('resolves relative style paths against the project root', async () => {
+      await writeFile(join(tempDir, 'style.md'), 'Relative rules here.', 'utf-8');
+
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: 'style.md' }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('Relative rules here.');
+    });
+
+    it('warns and continues when the style file is missing', async () => {
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const service = new LLMService(mockAgent, { agent: {}, git: {}, style_file: 'missing.md' }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      const result = await service.structureIssue('Add login');
+
+      expect(result.title).toBe('Add auth');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('missing.md'));
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).not.toContain('STYLE GUIDE');
+      warnSpy.mockRestore();
+    });
+
+    it('omits the style section when no style_file is configured', async () => {
+      const service = new LLMService(mockAgent, { agent: {}, git: {} }, tempDir);
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({ authenticated: true });
+      vi.mocked(mockAgent.prompt).mockResolvedValue(validResponse);
+
+      await service.structureIssue('Add login');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).not.toContain('STYLE GUIDE');
+    });
+  });
+
+  describe('suggestBranchSlug', () => {
+    beforeEach(() => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: true,
+      } as any);
+    });
+
+    it('returns the slug from the LLM response', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('add-retry-logic');
+
+      const slug = await llmService.suggestBranchSlug('api: add retry logic to fetch');
+
+      expect(slug).toBe('add-retry-logic');
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('api: add retry logic to fetch');
+    });
+
+    it('sanitizes messy responses into a valid slug', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('  Add Retry_Logic! \n');
+
+      const slug = await llmService.suggestBranchSlug('title');
+
+      expect(slug).toBe('add-retry-logic');
+    });
+
+    it('caps the slug at five words', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('one-two-three-four-five-six-seven');
+
+      const slug = await llmService.suggestBranchSlug('title');
+
+      expect(slug).toBe('one-two-three-four-five');
+    });
+
+    it('includes a body excerpt in the prompt when given', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('fix-timeout');
+
+      await llmService.suggestBranchSlug('title', 'The timeout fires too early.');
+
+      const promptArg = vi.mocked(mockAgent.prompt).mock.calls[0][0];
+      expect(promptArg).toContain('The timeout fires too early.');
+    });
+
+    it('throws when the response sanitizes to nothing', async () => {
+      vi.mocked(mockAgent.prompt).mockResolvedValue('!!! ???');
+
+      await expect(llmService.suggestBranchSlug('title')).rejects.toThrow('empty branch slug');
+    });
+
+    it('throws when the agent is not authenticated', async () => {
+      vi.mocked(mockAgent.checkAuth).mockResolvedValue({
+        authenticated: false,
+        error: 'Not authenticated',
+      } as any);
+
+      await expect(llmService.suggestBranchSlug('title')).rejects.toThrow('Not authenticated');
+    });
+  });
+});
