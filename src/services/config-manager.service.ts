@@ -97,10 +97,10 @@ export class ConfigManager {
    *
    * @example
    * deepMerge(
-   *   { agent: { provider: 'kimi', timeout: 120 }, git: {} },
+   *   { agent: { provider: 'groq', timeout: 120 }, git: {} },
    *   { agent: { timeout: 300 } }
    * )
-   * // Returns: { agent: { provider: 'kimi', timeout: 300 }, git: {} }
+   * // Returns: { agent: { provider: 'groq', timeout: 300 }, git: {} }
    */
   private deepMerge<T extends Record<string, any>>(
     defaults: T,
