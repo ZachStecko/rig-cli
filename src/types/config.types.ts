@@ -4,9 +4,9 @@ import { ValidLabel } from './labels.types.js';
  * Configuration for the LLM provider used to structure issues and PRs.
  */
 export interface AgentConfig {
-  /** LLM provider for text generation: 'kimi' uses the Moonshot API (requires MOONSHOT_API_KEY) (default: 'kimi') */
-  provider?: 'kimi';
-  /** Model ID to request from the provider (default: provider-specific, e.g. 'kimi-k3') */
+  /** LLM provider for text generation: 'groq' uses the Groq API (requires GROQ_API_KEY), 'kimi' uses the Moonshot API (requires MOONSHOT_API_KEY) (default: 'groq') */
+  provider?: 'groq' | 'kimi';
+  /** Model ID to request from the provider (default: provider-specific, e.g. 'openai/gpt-oss-120b') */
   model?: string;
   /** Timeout in seconds for LLM prompt calls (default: 120) */
   timeout?: number;
@@ -44,7 +44,7 @@ export interface RigConfig {
  * These are used when .rig.yml is missing or fields are omitted.
  */
 export const DEFAULT_CONFIG: RigConfig = {
-  agent: { provider: 'kimi', timeout: 120 },
+  agent: { provider: 'groq', timeout: 120 },
   git: {},
   verbose: false,
 };

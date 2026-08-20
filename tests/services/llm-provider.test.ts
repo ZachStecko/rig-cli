@@ -1,19 +1,25 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { KimiProvider, createProvider } from '../../src/services/llm-provider.js';
+import { GroqProvider, KimiProvider, createProvider } from '../../src/services/llm-provider.js';
 import { RigConfig } from '../../src/types/config.types.js';
 
 describe('llm-provider', () => {
-  const originalKey = process.env.MOONSHOT_API_KEY;
+  const originalKeys = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    MOONSHOT_API_KEY: process.env.MOONSHOT_API_KEY,
+  };
 
   beforeEach(() => {
+    process.env.GROQ_API_KEY = 'test-key';
     process.env.MOONSHOT_API_KEY = 'test-key';
   });
 
   afterEach(() => {
-    if (originalKey === undefined) {
-      delete process.env.MOONSHOT_API_KEY;
-    } else {
-      process.env.MOONSHOT_API_KEY = originalKey;
+    for (const [name, value] of Object.entries(originalKeys)) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -30,6 +36,59 @@ describe('llm-provider', () => {
     vi.stubGlobal('fetch', fetchMock);
     return fetchMock;
   }
+
+  describe('GroqProvider auth', () => {
+    it('is available when GROQ_API_KEY is set', async () => {
+      const provider = new GroqProvider();
+      expect(await provider.isAvailable()).toBe(true);
+      expect(await provider.checkAuth()).toEqual({ authenticated: true, method: 'api_key' });
+    });
+
+    it('is not available without GROQ_API_KEY', async () => {
+      delete process.env.GROQ_API_KEY;
+      const provider = new GroqProvider();
+      expect(await provider.isAvailable()).toBe(false);
+      const auth = await provider.checkAuth();
+      expect(auth.authenticated).toBe(false);
+      expect(auth.error).toContain('GROQ_API_KEY');
+    });
+
+    it('prompt throws without an API key', async () => {
+      delete process.env.GROQ_API_KEY;
+      const provider = new GroqProvider();
+      await expect(provider.prompt('hi')).rejects.toThrow('GROQ_API_KEY');
+    });
+  });
+
+  describe('GroqProvider prompt', () => {
+    it('sends a chat-completions request and returns the message content', async () => {
+      const fetchMock = stubFetchResponse({
+        choices: [{ message: { content: '{"title":"t","body":"b"}' } }],
+      });
+
+      const provider = new GroqProvider();
+      const result = await provider.prompt('structure this');
+
+      expect(result).toBe('{"title":"t","body":"b"}');
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const [url, request] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+      expect(request.headers.Authorization).toBe('Bearer test-key');
+      const payload = JSON.parse(request.body);
+      expect(payload.model).toBe('openai/gpt-oss-120b');
+      expect(payload.messages).toEqual([{ role: 'user', content: 'structure this' }]);
+    });
+
+    it('uses a custom model when provided', async () => {
+      const fetchMock = stubFetchResponse({ choices: [{ message: { content: 'ok' } }] });
+
+      const provider = new GroqProvider({ model: 'llama-3.3-70b-versatile' });
+      await provider.prompt('hi');
+
+      const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(payload.model).toBe('llama-3.3-70b-versatile');
+    });
+  });
 
   describe('KimiProvider auth', () => {
     it('is available when MOONSHOT_API_KEY is set', async () => {
@@ -112,10 +171,15 @@ describe('llm-provider', () => {
   });
 
   describe('createProvider', () => {
-    it('defaults to the Kimi provider', () => {
+    it('defaults to the Groq provider', () => {
       const provider = createProvider();
-      expect(provider).toBeInstanceOf(KimiProvider);
-      expect(provider.name).toBe('Kimi');
+      expect(provider).toBeInstanceOf(GroqProvider);
+      expect(provider.name).toBe('Groq');
+    });
+
+    it('creates a Groq provider from config', () => {
+      const config = { agent: { provider: 'groq', timeout: 60 }, git: {} } as RigConfig;
+      expect(createProvider(config)).toBeInstanceOf(GroqProvider);
     });
 
     it('creates a Kimi provider from config', () => {
@@ -123,13 +187,13 @@ describe('llm-provider', () => {
       expect(createProvider(config)).toBeInstanceOf(KimiProvider);
     });
 
-    it('falls back to Kimi with a warning on unknown providers', () => {
+    it('falls back to Groq with a warning on unknown providers', () => {
       const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
       const config = { agent: { provider: 'binary' }, git: {} } as unknown as RigConfig;
 
       const provider = createProvider(config);
 
-      expect(provider).toBeInstanceOf(KimiProvider);
+      expect(provider).toBeInstanceOf(GroqProvider);
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('Unknown agent provider: binary'));
     });
 

@@ -134,6 +134,26 @@ export class OpenAICompatProvider implements LLMProvider {
 }
 
 /**
+ * Groq's hosted open models via the OpenAI-compatible API.
+ *
+ * Requires the GROQ_API_KEY environment variable
+ * (create a key at https://console.groq.com).
+ */
+export class GroqProvider extends OpenAICompatProvider {
+  static readonly DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+  constructor(options?: ApiProviderOptions) {
+    super({
+      name: 'Groq',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      apiKeyEnvVar: 'GROQ_API_KEY',
+      model: options?.model ?? GroqProvider.DEFAULT_MODEL,
+      timeoutMs: options?.timeoutMs,
+    });
+  }
+}
+
+/**
  * Moonshot AI's Kimi models via the platform API.
  *
  * Requires the MOONSHOT_API_KEY environment variable
@@ -156,20 +176,22 @@ export class KimiProvider extends OpenAICompatProvider {
 /**
  * Creates an LLM provider based on the provider setting in config.
  *
- * @param config - Optional RigConfig; defaults to 'kimi' provider if omitted
+ * @param config - Optional RigConfig; defaults to 'groq' provider if omitted
  * @returns An LLMProvider matching the configured provider
  */
 export function createProvider(config?: RigConfig): LLMProvider {
-  const provider = config?.agent?.provider ?? 'kimi';
+  const provider = config?.agent?.provider ?? 'groq';
   const options: ApiProviderOptions = {
     model: config?.agent?.model,
     timeoutMs: (config?.agent?.timeout ?? 120) * 1000,
   };
   switch (provider) {
+    case 'groq':
+      return new GroqProvider(options);
     case 'kimi':
       return new KimiProvider(options);
     default:
-      console.warn(`Unknown agent provider: ${provider}. Falling back to 'kimi'.`);
-      return new KimiProvider(options);
+      console.warn(`Unknown agent provider: ${provider}. Falling back to 'groq'.`);
+      return new GroqProvider(options);
   }
 }
