@@ -104,6 +104,7 @@ export class OpenAICompatProvider implements LLMProvider {
         body: JSON.stringify({
           model: this.model,
           messages: [{ role: 'user', content: text }],
+          max_tokens: 16384,
         }),
         signal: controller.signal,
       });
@@ -115,9 +116,13 @@ export class OpenAICompatProvider implements LLMProvider {
       }
 
       const data = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
+        choices?: { message?: { content?: string }; finish_reason?: string }[];
       };
-      const content = data.choices?.[0]?.message?.content;
+      const choice = data.choices?.[0];
+      if (choice?.finish_reason === 'length') {
+        throw new Error(`${this.name} response was truncated at the max_tokens limit`);
+      }
+      const content = choice?.message?.content;
       if (typeof content !== 'string' || !content.trim()) {
         throw new Error(`${this.name} returned an empty response`);
       }
