@@ -24,7 +24,7 @@ For a full spec or PRD, use **`rig story`** instead of `create-issue`. It create
 
 ## Install
 
-**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: a `MOONSHOT_API_KEY` (create one at [platform.moonshot.ai](https://platform.moonshot.ai)).
+**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: a `GROQ_API_KEY` (create one at [console.groq.com](https://console.groq.com)).
 
 ```bash
 npm install -g rig-cli
@@ -101,8 +101,8 @@ Create `.rig.yml` in your project root. All fields are optional; missing values 
 
 ```yaml
 agent:
-  provider: kimi     # 'kimi' (Moonshot API, default)
-  model: kimi-k3     # model ID to request (default: kimi-k3)
+  provider: groq     # Groq API (default)
+  model: openai/gpt-oss-120b  # model ID to request (default: provider-specific)
   timeout: 120       # seconds per AI call
 
 git:
@@ -128,7 +128,7 @@ The repo ships an agent-facing skill at [`.claude/skills/rig/SKILL.md`](./.claud
 
 ## AI Providers
 
-**Kimi** (default): Moonshot AI's Kimi models over the OpenAI-compatible chat-completions API. Requires `MOONSHOT_API_KEY`. Defaults to `kimi-k3`; override with `agent.model` in `.rig.yml`.
+**Groq** (default): Groq's hosted open models over the OpenAI-compatible chat-completions API. Requires `GROQ_API_KEY`. Defaults to `openai/gpt-oss-120b`; override with `agent.model` in `.rig.yml`.
 
 Providers are small subclasses of `OpenAICompatProvider` (`src/services/llm-provider.ts`) — adding another vendor is a name, base URL, API-key env var, and default model.
 
@@ -138,7 +138,7 @@ AI is used only for text generation — issue bodies and spec decomposition. rig
 
 ## Disclaimer
 
-rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Moonshot AI. You must have your own API key and comply with your model provider's terms of service.
+rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Groq. You must have your own API key and comply with your model provider's terms of service.
 
 ## License
 

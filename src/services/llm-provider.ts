@@ -104,6 +104,7 @@ export class OpenAICompatProvider implements LLMProvider {
         body: JSON.stringify({
           model: this.model,
           messages: [{ role: 'user', content: text }],
+          max_tokens: 16384,
         }),
         signal: controller.signal,
       });
@@ -115,9 +116,13 @@ export class OpenAICompatProvider implements LLMProvider {
       }
 
       const data = (await response.json()) as {
-        choices?: { message?: { content?: string } }[];
+        choices?: { message?: { content?: string }; finish_reason?: string }[];
       };
-      const content = data.choices?.[0]?.message?.content;
+      const choice = data.choices?.[0];
+      if (choice?.finish_reason === 'length') {
+        throw new Error(`${this.name} response was truncated at the max_tokens limit`);
+      }
+      const content = choice?.message?.content;
       if (typeof content !== 'string' || !content.trim()) {
         throw new Error(`${this.name} returned an empty response`);
       }
@@ -130,6 +135,26 @@ export class OpenAICompatProvider implements LLMProvider {
     } finally {
       if (timer) clearTimeout(timer);
     }
+  }
+}
+
+/**
+ * Groq's hosted open models via the OpenAI-compatible API.
+ *
+ * Requires the GROQ_API_KEY environment variable
+ * (create a key at https://console.groq.com).
+ */
+export class GroqProvider extends OpenAICompatProvider {
+  static readonly DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
+  constructor(options?: ApiProviderOptions) {
+    super({
+      name: 'Groq',
+      baseUrl: 'https://api.groq.com/openai/v1',
+      apiKeyEnvVar: 'GROQ_API_KEY',
+      model: options?.model ?? GroqProvider.DEFAULT_MODEL,
+      timeoutMs: options?.timeoutMs,
+    });
   }
 }
 
@@ -156,20 +181,22 @@ export class KimiProvider extends OpenAICompatProvider {
 /**
  * Creates an LLM provider based on the provider setting in config.
  *
- * @param config - Optional RigConfig; defaults to 'kimi' provider if omitted
+ * @param config - Optional RigConfig; defaults to 'groq' provider if omitted
  * @returns An LLMProvider matching the configured provider
  */
 export function createProvider(config?: RigConfig): LLMProvider {
-  const provider = config?.agent?.provider ?? 'kimi';
+  const provider = config?.agent?.provider ?? 'groq';
   const options: ApiProviderOptions = {
     model: config?.agent?.model,
     timeoutMs: (config?.agent?.timeout ?? 120) * 1000,
   };
   switch (provider) {
+    case 'groq':
+      return new GroqProvider(options);
     case 'kimi':
       return new KimiProvider(options);
     default:
-      console.warn(`Unknown agent provider: ${provider}. Falling back to 'kimi'.`);
-      return new KimiProvider(options);
+      console.warn(`Unknown agent provider: ${provider}. Falling back to 'groq'.`);
+      return new GroqProvider(options);
   }
 }

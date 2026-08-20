@@ -100,7 +100,7 @@ ${content.trim()}`;
     return this.agent.isAvailable();
   }
 
-  /** Display name of the underlying provider (e.g. 'Kimi'). */
+  /** Display name of the underlying provider (e.g. 'Groq'). */
   get providerName(): string {
     return this.agent.name;
   }

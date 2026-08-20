@@ -7,8 +7,8 @@ description: Use the rig CLI for the GitHub issue-to-PR workflow. Trigger when a
 
 rig is a globally installed CLI that runs the GitHub issue-to-PR
 workflow for the current repo. It talks to GitHub through `gh` and uses
-an LLM provider (Kimi/Moonshot by default) for AI text generation. It
-needs the provider's API key in the environment (`MOONSHOT_API_KEY` for
+an LLM provider (Groq by default) for AI text generation. It
+needs the provider's API key in the environment (`GROQ_API_KEY` for
 the default provider) and an authenticated `gh`. Optional config lives
 in `.rig.yml` at the repo root.
 

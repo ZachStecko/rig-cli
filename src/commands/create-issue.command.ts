@@ -49,7 +49,7 @@ export class CreateIssueCommand extends BaseCommand {
     this.logger.header('Create GitHub Issue');
     console.log('');
 
-    this.logger.config('Agent provider', rigConfig.agent.provider || 'kimi');
+    this.logger.config('Agent provider', rigConfig.agent.provider || 'groq');
     this.logger.config('Verbose', verbose);
     const defaultLabels = rigConfig.defaultLabels || [];
 
