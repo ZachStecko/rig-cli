@@ -101,7 +101,7 @@ Create `.rig.yml` in your project root. All fields are optional; missing values 
 
 ```yaml
 agent:
-  provider: groq     # 'groq' (Groq API, default) or 'kimi' (Moonshot API)
+  provider: groq     # Groq API (default)
   model: openai/gpt-oss-120b  # model ID to request (default: provider-specific)
   timeout: 120       # seconds per AI call
 
@@ -130,13 +130,6 @@ The repo ships an agent-facing skill at [`.claude/skills/rig/SKILL.md`](./.claud
 
 **Groq** (default): Groq's hosted open models over the OpenAI-compatible chat-completions API. Requires `GROQ_API_KEY`. Defaults to `openai/gpt-oss-120b`; override with `agent.model` in `.rig.yml`.
 
-**Kimi**: Moonshot AI's Kimi models over the OpenAI-compatible chat-completions API. Requires `MOONSHOT_API_KEY`. Defaults to `kimi-k3`. Opt in with:
-
-```yaml
-agent:
-  provider: kimi
-```
-
 Providers are small subclasses of `OpenAICompatProvider` (`src/services/llm-provider.ts`) — adding another vendor is a name, base URL, API-key env var, and default model.
 
 AI is used only for text generation — issue bodies and spec decomposition. rig never runs an agent on your code.
@@ -145,7 +138,7 @@ AI is used only for text generation — issue bodies and spec decomposition. rig
 
 ## Disclaimer
 
-rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Groq or Moonshot AI. You must have your own API key and comply with your model provider's terms of service.
+rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Groq. You must have your own API key and comply with your model provider's terms of service.
 
 ## License
 
