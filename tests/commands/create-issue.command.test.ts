@@ -1,17 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, writeFile, rm } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import { CreateIssueCommand } from '../../src/commands/create-issue.command.js';
 import { Logger } from '../../src/services/logger.service.js';
 import { ConfigManager } from '../../src/services/config-manager.service.js';
 import { GitService } from '../../src/services/git.service.js';
 import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
-import { LLMService } from '../../src/services/llm.service.js';
-import * as readline from 'readline';
 
-// Mock readline module
-vi.mock('readline', () => ({
-  createInterface: vi.fn(),
-}));
+const VALID_BODY = `## Problem / Motivation
+
+Something is broken.
+
+## Implementation Details
+
+Fix it in src/services/foo.service.ts.
+
+## Acceptance Criteria
+
+- It works`;
+
+const VALID_ISSUE = `---
+labels: [backend, enhancement]
+---
+# cli: Fix the thing
+
+${VALID_BODY}
+`;
 
 describe('CreateIssueCommand', () => {
   let command: CreateIssueCommand;
@@ -22,9 +38,15 @@ describe('CreateIssueCommand', () => {
   let mockGuard: GuardService;
   let consoleLogSpy: any;
   let exitSpy: any;
-  let mockLLMService: any;
+  let dir: string;
 
-  beforeEach(() => {
+  const writeIssueFile = async (content: string): Promise<string> => {
+    const filePath = join(dir, 'issue.md');
+    await writeFile(filePath, content);
+    return filePath;
+  };
+
+  beforeEach(async () => {
     mockLogger = {
       header: vi.fn(),
       info: vi.fn(),
@@ -34,13 +56,11 @@ describe('CreateIssueCommand', () => {
       dim: vi.fn(),
       config: vi.fn(),
       command: vi.fn(),
-      timing: vi.fn(),
-      spinner: vi.fn((promise: Promise<any>) => promise),
     } as any;
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { provider: 'kimi' }, verbose: false }),
+      get: vi.fn().mockReturnValue({ git: {}, verbose: false }),
     } as any;
 
     mockGit = {
@@ -48,8 +68,8 @@ describe('CreateIssueCommand', () => {
     } as any;
 
     mockGitHub = {
-      createIssue: vi.fn(),
-      repoName: vi.fn(),
+      createIssue: vi.fn().mockResolvedValue(42),
+      repoName: vi.fn().mockResolvedValue('owner/repo'),
       ensureLabels: vi.fn().mockResolvedValue([]),
     } as any;
 
@@ -59,18 +79,7 @@ describe('CreateIssueCommand', () => {
 
     consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
-
-    // Mock LLMService prototype methods.
-    // isAvailable defaults to true because execute() checks it before
-    // prompting for input; tests override it to exercise the failure path.
-    mockLLMService = {
-      isAvailable: vi.fn().mockResolvedValue(true),
-      structureIssue: vi.fn(),
-    };
-
-    // Replace LLMService prototype methods with mocks
-    vi.spyOn(LLMService.prototype, 'isAvailable').mockImplementation(mockLLMService.isAvailable);
-    vi.spyOn(LLMService.prototype, 'structureIssue').mockImplementation(mockLLMService.structureIssue);
+    dir = await mkdtemp(join(tmpdir(), 'rig-test-'));
 
     command = new CreateIssueCommand(
       mockLogger,
@@ -82,602 +91,161 @@ describe('CreateIssueCommand', () => {
     );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     consoleLogSpy.mockRestore();
     vi.restoreAllMocks();
+    await rm(dir, { recursive: true, force: true });
   });
 
   describe('execute', () => {
     it('checks GitHub authentication before proceeding', async () => {
-      // Mock empty description input to exit early
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'close') {
-            // Simulate Ctrl+D with empty input
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+      const filePath = await writeIssueFile(VALID_ISSUE);
 
-      await command.execute();
+      await command.execute({ file: filePath, yes: true });
 
       expect(mockGuard.requireGhAuth).toHaveBeenCalled();
     });
 
-    it('displays header and prompt', async () => {
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+    it('requires --file', async () => {
+      await command.execute({ yes: true });
 
-      await command.execute();
-
-      expect(mockLogger.header).toHaveBeenCalledWith('Create GitHub Issue');
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Describe the issue'));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('requires --file')
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
     });
 
-    it('warns and exits when description is empty', async () => {
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
+    it('files the issue verbatim: H1 title, body unchanged, front-matter labels', async () => {
+      const filePath = await writeIssueFile(VALID_ISSUE);
 
-      await command.execute();
+      await command.execute({ file: filePath, yes: true });
 
-      expect(mockLogger.warn).toHaveBeenCalledWith('No description provided. Aborting.');
-    });
-
-    it('checks if LLM service is available', async () => {
-      const mockDescription = 'Add authentication feature';
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-      mockLLMService.isAvailable.mockResolvedValue(false);
-
-      await command.execute();
-
-      expect(mockLLMService.isAvailable).toHaveBeenCalled();
-      expect(mockLogger.error).toHaveBeenCalledWith('Agent is not available. Check your .rig.yml provider setting and authentication.');
-    });
-
-    it('successfully creates an issue with structured content', async () => {
-      const mockDescription = 'Add user authentication with OAuth';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication for users.',
-      };
-      const mockIssueNumber = 42;
-      const mockRepoName = 'owner/repo';
-
-      // Mock multiline input
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          // Auto-confirm
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
-
-      await command.execute();
-
-      expect(mockLLMService.structureIssue).toHaveBeenCalledWith(mockDescription);
       expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-        title: mockStructured.title,
-        body: mockStructured.body,
-        labels: undefined,
+        title: 'cli: Fix the thing',
+        body: VALID_BODY,
+        labels: ['backend', 'enhancement'],
       });
-      expect(mockLogger.success).toHaveBeenCalledWith(`Issue #${mockIssueNumber} created successfully!`);
-      expect(consoleLogSpy).toHaveBeenCalledWith(`  https://github.com/${mockRepoName}/issues/${mockIssueNumber}`);
+      expect(mockLogger.success).toHaveBeenCalledWith('Issue #42 created successfully!');
+      expect(consoleLogSpy).toHaveBeenCalledWith('  https://github.com/owner/repo/issues/42');
     });
 
-    it('creates an issue from --file with --yes without any prompts', async () => {
-      const { mkdtemp, writeFile, rm } = await import('fs/promises');
-      const { tmpdir } = await import('os');
-      const { join } = await import('path');
-      const dir = await mkdtemp(join(tmpdir(), 'rig-test-'));
-      const filePath = join(dir, 'issue.md');
-      await writeFile(filePath, 'Add user authentication with OAuth');
+    it('preserves code fences in the body', async () => {
+      const bodyWithCode = `${VALID_BODY}\n\n\`\`\`typescript\nconst x = 1;\n\`\`\``;
+      const filePath = await writeIssueFile(`# Title\n\n${bodyWithCode}`);
 
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication for users.',
-      };
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(7);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue('owner/repo');
+      await command.execute({ file: filePath, yes: true });
 
-      try {
-        await command.execute({ file: filePath, yes: true });
+      const issueBody = vi.mocked(mockGitHub.createIssue).mock.calls[0][0].body;
+      expect(issueBody).toContain('```typescript');
+      expect(issueBody).toBe(bodyWithCode);
+    });
 
-        expect(mockLLMService.structureIssue).toHaveBeenCalledWith('Add user authentication with OAuth');
-        expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-          title: mockStructured.title,
-          body: mockStructured.body,
-          labels: undefined,
-        });
-        expect(readline.createInterface).not.toHaveBeenCalled();
-      } finally {
-        await rm(dir, { recursive: true, force: true });
-      }
+    it('exits naming the missing sections for an incomplete body', async () => {
+      const filePath = await writeIssueFile(
+        '# Title\n\n## Problem / Motivation\n\nOnly this.'
+      );
+
+      await command.execute({ file: filePath, yes: true });
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('"## Implementation Details", "## Acceptance Criteria"')
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
+    });
+
+    it('exits when the file has no H1 title', async () => {
+      const filePath = await writeIssueFile(VALID_BODY);
+
+      await command.execute({ file: filePath, yes: true });
+
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('No title found'));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
     });
 
     it('exits when the --file path cannot be read', async () => {
-      mockLLMService.isAvailable.mockResolvedValue(true);
-
       await command.execute({ file: '/nonexistent/issue.md', yes: true });
 
-      expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('/nonexistent/issue.md'));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('/nonexistent/issue.md')
+      );
       expect(exitSpy).toHaveBeenCalledWith(1);
-      expect(mockLLMService.structureIssue).not.toHaveBeenCalled();
-    });
-
-    it('cancels issue creation when user declines confirmation', async () => {
-      const mockDescription = 'Add authentication';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication.',
-      };
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          // Decline confirmation
-          answerCallback('n');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-
-      await command.execute();
-
       expect(mockGitHub.createIssue).not.toHaveBeenCalled();
-      expect(mockLogger.warn).toHaveBeenCalledWith('Issue creation cancelled.');
     });
 
-    it('handles LLM structuring errors gracefully', async () => {
-      const mockDescription = 'Add authentication';
-      const mockError = new Error('LLM API error');
+    it('merges --label flags and config defaults with front-matter labels', async () => {
+      vi.mocked(mockConfig.get).mockReturnValue({
+        git: {},
+        verbose: false,
+        defaultLabels: ['rig-generated'],
+      } as any);
+      const filePath = await writeIssueFile(VALID_ISSUE);
 
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+      await command.execute({ file: filePath, label: ['P1', 'backend'], yes: true });
 
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockRejectedValue(mockError);
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: 'cli: Fix the thing',
+        body: VALID_BODY,
+        labels: ['backend', 'enhancement', 'P1', 'rig-generated'],
+      });
+    });
 
-      await command.execute();
+    it('ensures labels exist before creating the issue', async () => {
+      vi.mocked(mockGitHub.ensureLabels).mockResolvedValue(['enhancement']);
+      const filePath = await writeIssueFile(VALID_ISSUE);
 
-      expect(mockLogger.error).toHaveBeenCalledWith(`Failed to structure issue: ${mockError.message}`);
+      await command.execute({ file: filePath, yes: true });
+
+      expect(mockGitHub.ensureLabels).toHaveBeenCalledWith(['backend', 'enhancement']);
+      expect(mockLogger.info).toHaveBeenCalledWith('Created missing labels: enhancement');
+    });
+
+    it('files an issue without labels when none are given', async () => {
+      const filePath = await writeIssueFile(`# Title\n\n${VALID_BODY}`);
+
+      await command.execute({ file: filePath, yes: true });
+
+      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
+        title: 'Title',
+        body: VALID_BODY,
+        labels: undefined,
+      });
+      expect(mockGitHub.ensureLabels).not.toHaveBeenCalled();
+    });
+
+    it('rejects invalid labels from any source and provides a helpful message', async () => {
+      const filePath = await writeIssueFile(
+        `---\nlabels: [not-a-label]\n---\n# Title\n\n${VALID_BODY}`
+      );
+
+      await command.execute({ file: filePath, label: ['also-bad'], yes: true });
+
+      expect(mockLogger.error).toHaveBeenCalledWith('Invalid labels: not-a-label, also-bad');
+      expect(mockLogger.info).toHaveBeenCalledWith('Valid labels are defined in src/types/labels.types.ts');
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Examples:'));
+      expect(exitSpy).toHaveBeenCalledWith(1);
       expect(mockGitHub.createIssue).not.toHaveBeenCalled();
     });
 
     it('handles GitHub issue creation errors gracefully', async () => {
-      const mockDescription = 'Add authentication';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication.',
-      };
-      const mockError = new Error('GitHub API error');
+      vi.mocked(mockGitHub.createIssue).mockRejectedValue(new Error('GitHub API error'));
+      const filePath = await writeIssueFile(VALID_ISSUE);
 
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
+      await command.execute({ file: filePath, yes: true });
 
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockRejectedValue(mockError);
-
-      await command.execute();
-
-      expect(mockLogger.error).toHaveBeenCalledWith(`Failed to create issue: ${mockError.message}`);
+      expect(mockLogger.error).toHaveBeenCalledWith('Failed to create issue: GitHub API error');
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
-    it('creates issue with proper code fence formatting', async () => {
-      const mockDescription = 'Add authentication with code examples';
-      const mockStructured = {
-        title: 'feat: Add authentication',
-        body: `## Implementation Details
+    it('displays a preview before filing', async () => {
+      const filePath = await writeIssueFile(VALID_ISSUE);
 
-Create an authentication service:
+      await command.execute({ file: filePath, yes: true });
 
-\`\`\`typescript
-export class AuthService {
-  async login(username: string, password: string) {
-    return jwt.sign({ username }, SECRET);
-  }
-}
-\`\`\`
-
-## Testing Strategy
-- Test login flow with valid credentials`,
-      };
-      const mockIssueNumber = 42;
-      const mockRepoName = 'owner/repo';
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
-
-      await command.execute();
-
-      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-        title: mockStructured.title,
-        body: mockStructured.body,
-        labels: undefined,
-      });
-
-      const issueBody = vi.mocked(mockGitHub.createIssue).mock.calls[0][0].body;
-      expect(issueBody).toContain('```typescript');
-      expect(issueBody).toMatch(/```typescript[\s\S]*?```/);
-      expect(issueBody).not.toMatch(/^typescript$/m);
-    });
-
-    it('creates issue with default labels when configured', async () => {
-      const mockDescription = 'Add authentication feature';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication for users.',
-      };
-      const mockIssueNumber = 42;
-      const mockRepoName = 'owner/repo';
-      const defaultLabels = ['rig-generated', 'enhancement'];
-
-      vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'kimi' },
-        verbose: false,
-        defaultLabels,
-      } as any);
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
-
-      await command.execute();
-
-      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-        title: mockStructured.title,
-        body: mockStructured.body,
-        labels: defaultLabels,
-      });
-      expect(mockLogger.config).toHaveBeenCalledWith('Default labels', 'rig-generated, enhancement');
-    });
-
-    it('creates issue without labels when defaultLabels is empty array', async () => {
-      const mockDescription = 'Add authentication feature';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication for users.',
-      };
-      const mockIssueNumber = 42;
-      const mockRepoName = 'owner/repo';
-
-      vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'kimi' },
-        verbose: false,
-        defaultLabels: [],
-      } as any);
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
-
-      await command.execute();
-
-      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-        title: mockStructured.title,
-        body: mockStructured.body,
-        labels: undefined,
-      });
-      expect(mockLogger.config).not.toHaveBeenCalledWith('Default labels', expect.anything());
-    });
-
-    it('creates issue without labels when defaultLabels is undefined', async () => {
-      const mockDescription = 'Add authentication feature';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication for users.',
-      };
-      const mockIssueNumber = 42;
-      const mockRepoName = 'owner/repo';
-
-      vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'kimi' },
-        verbose: false,
-      } as any);
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
-
-      await command.execute();
-
-      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-        title: mockStructured.title,
-        body: mockStructured.body,
-        labels: undefined,
-      });
-      expect(mockLogger.config).not.toHaveBeenCalledWith('Default labels', expect.anything());
-    });
-
-    it('rejects invalid labels and provides helpful error message', async () => {
-      const invalidLabels = ['invalid-label', 'foo', 'bar'];
-
-      vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'kimi' },
-        verbose: false,
-        defaultLabels: invalidLabels,
-      } as any);
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-
-      await command.execute();
-
-      expect(mockLogger.error).toHaveBeenCalledWith('Invalid labels in config: invalid-label, foo, bar');
-      expect(mockLogger.info).toHaveBeenCalledWith('Valid labels are defined in src/types/labels.types.ts');
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Examples:'));
-      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
-    });
-
-    it('accepts all valid labels from the defined set', async () => {
-      const mockDescription = 'Add authentication feature';
-      const mockStructured = {
-        title: 'Add user authentication',
-        body: 'Implement OAuth authentication for users.',
-      };
-      const mockIssueNumber = 42;
-      const mockRepoName = 'owner/repo';
-      const validLabels = ['backend', 'enhancement', 'P0', 'Phase 1: MVP', 'rig-generated'];
-
-      vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'kimi' },
-        verbose: false,
-        defaultLabels: validLabels,
-      } as any);
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'line') {
-            callback(mockDescription);
-          }
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn((question, answerCallback) => {
-          answerCallback('y');
-        }),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-      vi.spyOn(process, 'removeListener').mockImplementation(() => process as any);
-
-      mockLLMService.isAvailable.mockResolvedValue(true);
-      mockLLMService.structureIssue.mockResolvedValue(mockStructured);
-      vi.mocked(mockGitHub.createIssue).mockResolvedValue(mockIssueNumber);
-      vi.mocked(mockGitHub.repoName).mockResolvedValue(mockRepoName);
-
-      await command.execute();
-
-      expect(mockGitHub.createIssue).toHaveBeenCalledWith({
-        title: mockStructured.title,
-        body: mockStructured.body,
-        labels: validLabels,
-      });
-      expect(mockLogger.error).not.toHaveBeenCalledWith(expect.stringContaining('Invalid labels'));
-    });
-
-    it('rejects mixed valid and invalid labels', async () => {
-      const mixedLabels = ['backend', 'invalid-label', 'enhancement', 'foo'];
-
-      vi.mocked(mockConfig.get).mockReturnValue({
-        agent: { provider: 'kimi' },
-        verbose: false,
-        defaultLabels: mixedLabels,
-      } as any);
-
-      const mockRL = {
-        on: vi.fn((event, callback) => {
-          if (event === 'close') {
-            callback();
-          }
-          return mockRL;
-        }),
-        close: vi.fn(),
-        question: vi.fn(),
-      };
-      vi.mocked(readline.createInterface).mockReturnValue(mockRL as any);
-      vi.spyOn(process, 'once').mockImplementation(() => process as any);
-
-      await command.execute();
-
-      expect(mockLogger.error).toHaveBeenCalledWith('Invalid labels in config: invalid-label, foo');
-      expect(mockGitHub.createIssue).not.toHaveBeenCalled();
+      expect(mockLogger.header).toHaveBeenCalledWith('Preview');
+      expect(consoleLogSpy).toHaveBeenCalledWith('  cli: Fix the thing');
     });
   });
 });

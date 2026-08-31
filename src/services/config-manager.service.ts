@@ -11,10 +11,10 @@ import { RigConfig, DEFAULT_CONFIG } from '../types/config.types.js';
  *
  * Users can override individual fields without providing a complete config:
  * ```yaml
- * agent:
- *   timeout: 300
+ * git:
+ *   base_branch: develop
  * ```
- * This overrides only agent.timeout while keeping all other defaults.
+ * This overrides only git.base_branch while keeping all other defaults.
  */
 export class ConfigManager {
   private projectRoot: string;
@@ -78,15 +78,6 @@ export class ConfigManager {
   }
 
   /**
-   * Gets the agent configuration section.
-   *
-   * @returns Agent configuration
-   */
-  getAgent() {
-    return this.get().agent;
-  }
-
-  /**
    * Deep merges two configuration objects.
    * User values override defaults at the field level.
    *
@@ -97,10 +88,10 @@ export class ConfigManager {
    *
    * @example
    * deepMerge(
-   *   { agent: { provider: 'groq', timeout: 120 }, git: {} },
-   *   { agent: { timeout: 300 } }
+   *   { git: {}, verbose: false },
+   *   { git: { base_branch: 'develop' } }
    * )
-   * // Returns: { agent: { provider: 'groq', timeout: 300 }, git: {} }
+   * // Returns: { git: { base_branch: 'develop' }, verbose: false }
    */
   private deepMerge<T extends Record<string, any>>(
     defaults: T,

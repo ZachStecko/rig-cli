@@ -12,7 +12,7 @@ describe('CLI entry point', () => {
 
   it('--help prints description', () => {
     const out = execSync('npx tsx src/index.ts --help', { cwd: ROOT, encoding: 'utf-8' });
-    expect(out).toContain('AI-assisted GitHub issue creation and PR opening');
+    expect(out).toContain('GitHub issue filing and PR opening for coding agents');
   });
 
   it('--help lists exactly the four commands', () => {

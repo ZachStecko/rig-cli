@@ -283,5 +283,60 @@ describe('PrCommand', () => {
       expect(mockLogger.error).toHaveBeenCalledWith('PR creation failed: remote rejected');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
+
+    it('uses the --body-file content verbatim instead of the template', async () => {
+      const { mkdtemp, writeFile, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      const dir = await mkdtemp(join(tmpdir(), 'rig-test-'));
+      const bodyPath = join(dir, 'pr-body.md');
+      const body = 'Start here: src/foo.ts — the whole risk lives here.';
+      await writeFile(bodyPath, body);
+
+      vi.mocked(mockGitHub.prListByHead).mockResolvedValue([]);
+      vi.mocked(mockGitHub.createPr).mockResolvedValue('https://github.com/u/r/pull/7');
+
+      try {
+        await command.execute({ bodyFile: bodyPath });
+
+        expect(mockPrTemplate.generatePrBody).not.toHaveBeenCalled();
+        expect(mockGitHub.createPr).toHaveBeenCalledWith(
+          expect.objectContaining({ body })
+        );
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('exits when the --body-file is empty', async () => {
+      const { mkdtemp, writeFile, rm } = await import('fs/promises');
+      const { tmpdir } = await import('os');
+      const { join } = await import('path');
+      const dir = await mkdtemp(join(tmpdir(), 'rig-test-'));
+      const bodyPath = join(dir, 'pr-body.md');
+      await writeFile(bodyPath, '   \n');
+
+      try {
+        await command.execute({ bodyFile: bodyPath });
+
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          expect.stringContaining('is empty')
+        );
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(mockGitHub.createPr).not.toHaveBeenCalled();
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('exits when the --body-file cannot be read', async () => {
+      await command.execute({ bodyFile: '/nonexistent/pr-body.md' });
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('/nonexistent/pr-body.md')
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockGitHub.createPr).not.toHaveBeenCalled();
+    });
   });
 });
