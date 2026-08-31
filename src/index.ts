@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * rig-cli: AI-assisted GitHub issue creation and PR opening.
+ * rig-cli: GitHub issue filing and PR opening for coding agents.
  *
- * Two jobs: turn plans into well-formed GitHub issues, and turn finished
- * branches into well-formed pull requests. Implementation happens outside
- * rig, with whatever coding tool the user prefers.
+ * Two jobs: file agent-authored issue files as well-formed GitHub
+ * issues, and turn finished branches into pull requests. Content is
+ * drafted outside rig — by the user's coding agent, which has the repo
+ * context — and rig validates and files it.
  */
 import { Command } from 'commander';
 import { readFileSync } from 'fs';
@@ -33,7 +34,7 @@ const program = new Command();
 
 program
   .name('rig')
-  .description('AI-assisted GitHub issue creation and PR opening')
+  .description('GitHub issue filing and PR opening for coding agents')
   .version(packageJson.version);
 
 // Initialize services
@@ -56,10 +57,16 @@ async function loadConfig(): Promise<void> {
 // Register create-issue command
 program
   .command('create-issue')
-  .description('Describe an issue in plain text; AI structures and files it')
-  .option('--file <path>', 'Read the description from a file instead of prompting')
+  .description('File a structured issue file (front-matter labels, H1 title, body) verbatim')
+  .option('--file <path>', 'The structured issue file to read (required)')
+  .option(
+    '--label <label>',
+    'Label to apply, in addition to front matter (repeatable)',
+    (value: string, previous: string[]) => [...previous, value],
+    [] as string[]
+  )
   .option('-y, --yes', 'Skip the confirmation prompt')
-  .action(async (options: { file?: string; yes?: boolean }) => {
+  .action(async (options: { file?: string; label?: string[]; yes?: boolean }) => {
     await loadConfig();
     const createIssueCommand = new CreateIssueCommand(logger, config, git, github, guard, projectRoot);
     await createIssueCommand.execute(options);
@@ -68,8 +75,8 @@ program
 // Register story command
 program
   .command('story')
-  .description('Decompose a planning spec into a parent story and atomic child issues')
-  .option('--file <path>', 'Read the spec from a file instead of prompting')
+  .description('File a story file: a parent story plus its "## Issue:" child issues')
+  .option('--file <path>', 'The story file to read (required)')
   .option('-y, --yes', 'Skip confirmation prompts')
   .action(async (options: { file?: string; yes?: boolean }) => {
     await loadConfig();
@@ -104,6 +111,7 @@ program
   .command('pr')
   .description('Create or update a pull request for the current branch')
   .option('--issue <number>', 'Linked issue number (default: parsed from branch name)')
+  .option('--body-file <path>', 'File whose content becomes the PR body verbatim')
   .action(async (options) => {
     await loadConfig();
     const prCommand = new PrCommand(logger, config, git, github, guard, projectRoot);

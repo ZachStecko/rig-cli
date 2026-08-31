@@ -5,7 +5,6 @@ import { ConfigManager } from '../../src/services/config-manager.service.js';
 import { GitService } from '../../src/services/git.service.js';
 import { GitHubService } from '../../src/services/github.service.js';
 import { GuardService } from '../../src/services/guard.service.js';
-import { LLMService } from '../../src/services/llm.service.js';
 
 describe('BranchCommand', () => {
   let command: BranchCommand;
@@ -15,8 +14,6 @@ describe('BranchCommand', () => {
   let mockGitHub: GitHubService;
   let mockGuard: GuardService;
   let exitSpy: any;
-  let llmAvailableSpy: any;
-  let llmSlugSpy: any;
 
   const issue = {
     number: 21,
@@ -37,7 +34,7 @@ describe('BranchCommand', () => {
 
     mockConfig = {
       load: vi.fn(),
-      get: vi.fn().mockReturnValue({ agent: { provider: 'kimi' } }),
+      get: vi.fn().mockReturnValue({ git: {}, verbose: false }),
     } as any;
 
     mockGit = {
@@ -58,9 +55,6 @@ describe('BranchCommand', () => {
     } as any;
 
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as any);
-    llmAvailableSpy = vi.spyOn(LLMService.prototype, 'isAvailable').mockResolvedValue(true);
-    llmSlugSpy = vi.spyOn(LLMService.prototype, 'suggestBranchSlug').mockResolvedValue('add-issue-clipboard');
-    vi.spyOn(LLMService.prototype, 'providerName', 'get').mockReturnValue('Kimi');
 
     command = new BranchCommand(
       mockLogger,
@@ -78,18 +72,17 @@ describe('BranchCommand', () => {
     vi.clearAllMocks();
   });
 
-  it('creates a typed branch with the LLM slug off the base branch', async () => {
+  it('creates a typed branch with the title slug off the base branch', async () => {
     await command.execute('21');
 
     expect(mockGitHub.viewIssue).toHaveBeenCalledWith(21);
-    expect(llmSlugSpy).toHaveBeenCalledWith(issue.title, issue.body);
-    expect(mockGit.createBranch).toHaveBeenCalledWith('feat/issue-21-add-issue-clipboard', 'master');
+    expect(mockGit.createBranch).toHaveBeenCalledWith('feat/issue-21-add-clipboard-support-for', 'master');
     expect(mockLogger.success).toHaveBeenCalledWith(
-      'Created branch feat/issue-21-add-issue-clipboard off master'
+      'Created branch feat/issue-21-add-clipboard-support-for off master'
     );
     expect(mockGit.push).toHaveBeenCalled();
     expect(mockLogger.success).toHaveBeenCalledWith(
-      'Pushed feat/issue-21-add-issue-clipboard to origin'
+      'Pushed feat/issue-21-add-clipboard-support-for to origin'
     );
     expect(exitSpy).not.toHaveBeenCalled();
   });
@@ -114,26 +107,7 @@ describe('BranchCommand', () => {
 
     await command.execute('21');
 
-    expect(mockGit.createBranch).toHaveBeenCalledWith('fix/issue-21-add-issue-clipboard', 'master');
-  });
-
-  it('falls back to the title slug when the LLM is unavailable', async () => {
-    llmAvailableSpy.mockResolvedValue(false);
-
-    await command.execute('21');
-
-    expect(llmSlugSpy).not.toHaveBeenCalled();
-    expect(mockGit.createBranch).toHaveBeenCalledWith('feat/issue-21-add-clipboard-support-for', 'master');
-  });
-
-  it('falls back to the title slug when LLM naming fails', async () => {
-    llmSlugSpy.mockRejectedValue(new Error('timeout'));
-
-    await command.execute('21');
-
-    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('using title slug'));
-    expect(mockGit.createBranch).toHaveBeenCalledWith('feat/issue-21-add-clipboard-support-for', 'master');
-    expect(exitSpy).not.toHaveBeenCalled();
+    expect(mockGit.createBranch).toHaveBeenCalledWith('fix/issue-21-add-clipboard-support-for', 'master');
   });
 
   it('switches to an existing issue branch regardless of slug or type', async () => {
@@ -148,7 +122,6 @@ describe('BranchCommand', () => {
     expect(mockGit.checkout).toHaveBeenCalledWith('fix/issue-21-some-old-slug');
     expect(mockGit.createBranch).not.toHaveBeenCalled();
     expect(mockGit.push).not.toHaveBeenCalled();
-    expect(llmSlugSpy).not.toHaveBeenCalled();
     expect(mockLogger.success).toHaveBeenCalledWith(
       'Switched to existing branch fix/issue-21-some-old-slug'
     );

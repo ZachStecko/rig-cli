@@ -1,6 +1,6 @@
 {
   "name": "rig-cli",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "AI-assisted GitHub issue creation and PR opening. Plan to issue, branch to PR; you implement with your own tools.",
   "type": "module",
   "bin": {
@@ -14,7 +14,6 @@
     "github",
     "issues",
     "pull-request",
-    "groq",
     "cli",
     "automation",
     "workflow",

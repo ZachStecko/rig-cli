@@ -101,12 +101,12 @@ To remove a label:
 ### Label Categories
 
 #### Component Labels
-Indicate which part of the system an issue affects. Offered to the LLM
-when it labels issues in `rig create-issue` and `rig story`.
+Indicate which part of the system an issue affects. Available for the
+authoring agent to apply in `rig create-issue` and `rig story` files.
 
 #### Priority Labels
-Indicate urgency/importance. Available for the LLM to apply and for
-manual triage on GitHub.
+Indicate urgency/importance. Available for the authoring agent to
+apply and for manual triage on GitHub.
 
 #### Phase Labels
 Indicate project milestone/phase. Available for roadmap organization

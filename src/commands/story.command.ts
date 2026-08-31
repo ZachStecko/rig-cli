@@ -1,46 +1,29 @@
 import { BaseCommand } from './base-command.js';
-import { Logger } from '../services/logger.service.js';
-import { ConfigManager } from '../services/config-manager.service.js';
-import { GitService } from '../services/git.service.js';
-import { GitHubService } from '../services/github.service.js';
-import { GuardService } from '../services/guard.service.js';
-import { LLMService } from '../services/llm.service.js';
-import { TYPE_LABELS, SPECIAL_LABELS } from '../types/labels.types.js';
+import { parseStoryFile, IssueFileError } from '../services/issue-file.service.js';
+import { isValidLabel, getAllValidLabels, TYPE_LABELS, SPECIAL_LABELS } from '../types/labels.types.js';
 
 /**
- * StoryCommand decomposes a planning spec / PRD into a parent story issue
- * and a set of atomic child issues on GitHub.
+ * StoryCommand files an agent-authored story file: a parent story issue
+ * and its pre-decomposed child issues.
+ *
+ * The calling coding agent decomposes the spec itself (it has the repo
+ * context); rig validates the format and files the issues.
  *
  * Workflow:
- * 1. Prompt user for spec content via multiline input
- * 2. Use LLM to structure parent story issue
- * 3. Display preview, get user confirmation
- * 4. Create parent issue with 'story' + 'rig-created' labels
- * 5. Use LLM to decompose spec into atomic child issues
- * 6. Display child issue count/titles, get confirmation
- * 7. Create each child issue with 'rig-created' label
- * 8. Log summary with parent + child URLs
+ * 1. Read the story file (--file): parent story + "## Issue:" children
+ * 2. Display parent preview, get user confirmation
+ * 3. Create parent issue with 'story' + 'rig-created' labels
+ * 4. Display child issue count/titles, get confirmation
+ * 5. Create each child issue with 'rig-created' label and a
+ *    "Part of #<parent>" reference
+ * 6. Log summary with parent + child URLs
  */
 export class StoryCommand extends BaseCommand {
-  private llm: LLMService;
-
-  constructor(
-    logger: Logger,
-    config: ConfigManager,
-    git: GitService,
-    github: GitHubService,
-    guard: GuardService,
-    projectRoot?: string
-  ) {
-    super(logger, config, git, github, guard, projectRoot);
-    this.llm = new LLMService(undefined, this.config.get(), this.projectRoot);
-  }
-
   /**
    * Executes the story command.
    *
    * @param options - Command options
-   * @param options.file - Read the spec from this file instead of prompting
+   * @param options.file - The story file to read
    * @param options.yes - Skip confirmation prompts (for non-interactive use)
    */
   async execute(options?: { file?: string; yes?: boolean }): Promise<void> {
@@ -49,58 +32,64 @@ export class StoryCommand extends BaseCommand {
 
     await this.guard.requireGhAuth();
 
-    this.logger.header('Decompose Planning Spec');
+    this.logger.header('File Story and Child Issues');
     console.log('');
 
-    // Check LLM availability before asking the user to paste anything,
-    // so a missing CLI or API key fails fast instead of after input.
-    const llmAvailable = await this.llm.isAvailable();
-    if (!llmAvailable) {
-      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
+    if (!options?.file) {
+      this.logger.error('story requires --file <path> with the parent story and child issues.');
+      this.logger.dim('Format: optional "labels: [...]" front matter, one H1 story title, the story body,');
+      this.logger.dim('then each child as "## Issue: <title>" with an optional "labels: [...]" first line.');
       process.exit(1);
       return; // For testing
     }
 
-    // Get spec content from the file or the user
-    const specContent = await this.readMultilineInput(
-      options?.file,
-      'Paste your planning spec / PRD (multiline input):'
-    );
-
-    if (!specContent.trim()) {
-      this.logger.warn('No spec content provided. Aborting.');
+    const content = await this.readMultilineInput(options.file, '');
+    if (!content.trim()) {
+      this.logger.warn('No story content provided. Aborting.');
       return;
     }
 
-    this.logger.config('Spec length', `${specContent.length} chars`);
-
-    // Structure parent story
-    let parentIssue;
+    // Parse the structured file; bodies are filed verbatim
+    let story;
     try {
-      this.logger.command(`${this.llm.providerName} chat/completions`);
-      const startTime = Date.now();
-      parentIssue = await this.logger.spinner(
-        this.llm.structureIssue(specContent),
-        `Structuring parent story with ${this.llm.providerName}...`
-      );
-      this.logger.timing('Story structuring', Date.now() - startTime);
+      story = parseStoryFile(content);
     } catch (error) {
-      this.logger.error(`Failed to structure story: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof IssueFileError) {
+        this.logger.error(error.message);
+        process.exit(1);
+        return; // For testing
+      }
+      throw error;
+    }
+
+    // Validate all labels (parent front matter + per-child) up front so
+    // a bad label fails before any issue is created.
+    const authoredLabels = [
+      ...story.parent.labels,
+      ...story.children.flatMap(child => child.labels),
+    ];
+    const invalidLabels = [...new Set(authoredLabels.filter(label => !isValidLabel(label)))];
+    if (invalidLabels.length > 0) {
+      this.logger.error(`Invalid labels: ${invalidLabels.join(', ')}`);
+      this.logger.info('Valid labels are defined in src/types/labels.types.ts');
+      this.logger.info(`Examples: ${getAllValidLabels().slice(0, 10).join(', ')}, ...`);
       process.exit(1);
       return; // For testing
     }
 
     // Preview parent
-    this.displayPreview('Parent Story', parentIssue.title, parentIssue.body);
+    this.displayPreview('Parent Story', story.parent.title, story.parent.body);
 
-    const parentConfirmed = options?.yes || (await this.confirm('\nCreate parent story? (y/n): '));
+    const parentConfirmed = options.yes || (await this.confirm('\nCreate parent story? (y/n): '));
     if (!parentConfirmed) {
       this.logger.warn('Story creation cancelled.');
       return;
     }
 
     // Create parent issue
-    const parentLabels = [...new Set([TYPE_LABELS.STORY, SPECIAL_LABELS.RIG_CREATED, ...defaultLabels])];
+    const parentLabels = [
+      ...new Set([TYPE_LABELS.STORY, SPECIAL_LABELS.RIG_CREATED, ...story.parent.labels, ...defaultLabels]),
+    ];
 
     // Ensure all labels exist in the repo before creating the issue
     const createdLabels = await this.github.ensureLabels(parentLabels);
@@ -112,8 +101,8 @@ export class StoryCommand extends BaseCommand {
     try {
       this.logger.command('gh issue create (parent)');
       parentNumber = await this.github.createIssue({
-        title: parentIssue.title,
-        body: parentIssue.body,
+        title: story.parent.title,
+        body: story.parent.body,
         labels: parentLabels,
       });
     } catch (error) {
@@ -127,32 +116,16 @@ export class StoryCommand extends BaseCommand {
     this.logger.success(`Parent story #${parentNumber} created`);
     console.log(`  https://github.com/${repoName}/issues/${parentNumber}`);
 
-    // Decompose into child issues
-    let childIssues;
-    try {
-      this.logger.command(`${this.llm.providerName} chat/completions`);
-      const startTime = Date.now();
-      childIssues = await this.logger.spinner(
-        this.llm.decomposeStory(specContent, parentNumber),
-        'Decomposing spec into atomic issues...'
-      );
-      this.logger.timing('Decomposition', Date.now() - startTime);
-    } catch (error) {
-      this.logger.error(`Failed to decompose story: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      process.exit(1);
-      return; // For testing
-    }
-
     // Preview child issues
     console.log('');
     this.logger.header('Child Issues');
-    this.logger.info(`${childIssues.length} issues to create:`);
+    this.logger.info(`${story.children.length} issues to create:`);
     console.log('');
-    for (const child of childIssues) {
+    for (const child of story.children) {
       console.log(`  - ${child.title}`);
     }
 
-    const childConfirmed = options?.yes || (await this.confirm(`\nCreate ${childIssues.length} child issues? (y/n): `));
+    const childConfirmed = options.yes || (await this.confirm(`\nCreate ${story.children.length} child issues? (y/n): `));
     if (!childConfirmed) {
       this.logger.warn('Child issue creation cancelled.');
       return;
@@ -160,21 +133,21 @@ export class StoryCommand extends BaseCommand {
 
     // Ensure all child labels exist before creating issues
     const allChildLabels = [...new Set(
-      childIssues.flatMap(child => [SPECIAL_LABELS.RIG_CREATED, ...(child.labels || []), ...defaultLabels])
+      story.children.flatMap(child => [SPECIAL_LABELS.RIG_CREATED, ...child.labels, ...defaultLabels])
     )];
     const createdChildLabels = await this.github.ensureLabels(allChildLabels);
     if (createdChildLabels.length > 0) {
       this.logger.info(`Created missing labels: ${createdChildLabels.join(', ')}`);
     }
 
-    // Create child issues
+    // Create child issues, each linked back to the parent story
     const createdNumbers: number[] = [];
-    for (const child of childIssues) {
-      const childLabels = [...new Set([SPECIAL_LABELS.RIG_CREATED, ...(child.labels || []), ...defaultLabels])];
+    for (const child of story.children) {
+      const childLabels = [...new Set([SPECIAL_LABELS.RIG_CREATED, ...child.labels, ...defaultLabels])];
       try {
         const num = await this.github.createIssue({
           title: child.title,
-          body: child.body,
+          body: `${child.body}\n\nPart of #${parentNumber}`,
           labels: childLabels,
         });
         createdNumbers.push(num);
@@ -192,9 +165,9 @@ export class StoryCommand extends BaseCommand {
       console.log(`  Child:  https://github.com/${repoName}/issues/${num}`);
     }
 
-    const failedCount = childIssues.length - createdNumbers.length;
+    const failedCount = story.children.length - createdNumbers.length;
     if (failedCount > 0) {
-      this.logger.warn(`${failedCount} of ${childIssues.length} child issues failed to create.`);
+      this.logger.warn(`${failedCount} of ${story.children.length} child issues failed to create.`);
     }
     if (createdNumbers.length === 0) {
       this.logger.error(`No child issues were created for story #${parentNumber}.`);
