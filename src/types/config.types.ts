@@ -1,18 +1,6 @@
 import { ValidLabel } from './labels.types.js';
 
 /**
- * Configuration for the LLM provider used to structure issues and PRs.
- */
-export interface AgentConfig {
-  /** LLM provider for text generation: 'groq' uses the Groq API (requires GROQ_API_KEY), 'kimi' uses the Moonshot API (requires MOONSHOT_API_KEY) (default: 'groq') */
-  provider?: 'groq' | 'kimi';
-  /** Model ID to request from the provider (default: provider-specific, e.g. 'openai/gpt-oss-120b') */
-  model?: string;
-  /** Timeout in seconds for LLM prompt calls (default: 120) */
-  timeout?: number;
-}
-
-/**
  * Configuration for git operations.
  */
 export interface GitConfig {
@@ -25,18 +13,11 @@ export interface GitConfig {
  * All fields are optional in the YAML file; missing values use defaults.
  */
 export interface RigConfig {
-  agent: AgentConfig;
   git: GitConfig;
   /** Enable verbose debug output (default: false) */
   verbose?: boolean;
   /** Default labels to apply when creating issues via rig create-issue (default: []) */
   defaultLabels?: ValidLabel[];
-  /**
-   * Path to a markdown style guide injected into every AI prompt, so
-   * generated issue titles and bodies follow your writing rules.
-   * Relative to the project root; '~/' expands to the home directory.
-   */
-  style_file?: string;
 }
 
 /**
@@ -44,7 +25,6 @@ export interface RigConfig {
  * These are used when .rig.yml is missing or fields are omitted.
  */
 export const DEFAULT_CONFIG: RigConfig = {
-  agent: { provider: 'groq', timeout: 120 },
   git: {},
   verbose: false,
 };

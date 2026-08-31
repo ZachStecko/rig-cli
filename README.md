@@ -2,7 +2,7 @@
 
 ![rig-cli logo](./assets/logo.png)
 
-AI-assisted GitHub issue creation and PR opening. rig handles the chores around your code: it turns plans into well-formed GitHub issues, and finished branches into well-formed pull requests. You implement with whatever coding tool you prefer.
+GitHub issue filing and PR opening for coding agents. rig handles the chores around your code: it files agent-authored issue files as well-formed GitHub issues, and turns finished branches into pull requests. Your coding agent drafts the content — it has the repo context — and rig validates and files it.
 
 A side benefit: every change follows a traceable path from issue to branch to pull request. That paper trail doubles as change-management evidence for compliance frameworks like SOC 2.
 
@@ -14,17 +14,17 @@ A side benefit: every change follows a traceable path from issue to branch to pu
 rig create-issue  →  implement with your own tools  →  rig pr
 ```
 
-1. **`rig create-issue`** — paste a plan in plain text. AI structures it into a GitHub issue with title, body, and labels.
-2. **Implement** — pick up the issue with your editor, Claude Code, Cursor, or anything else. Name the branch `issue-42-short-slug`.
-3. **`rig pr`** — pushes the branch, generates a PR body from the issue and commits, and opens (or updates) the PR.
+1. **`rig create-issue`** — your coding agent writes a structured issue file; rig validates it and files it with title, body, and labels.
+2. **Implement** — pick up the issue with your editor, Claude Code, Cursor, or anything else. Name the branch `issue-42-short-slug` (or let `rig branch` do it).
+3. **`rig pr`** — pushes the branch, builds a PR body from the issue and commits (or takes one verbatim with `--body-file`), and opens or updates the PR.
 
-For a full spec or PRD, use **`rig story`** instead of `create-issue`. It creates one parent story issue plus a set of small, independently implementable child issues.
+For a full spec or PRD, use **`rig story`** instead of `create-issue`. It files one parent story issue plus the pre-decomposed child issues from the same file.
 
 ---
 
 ## Install
 
-**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. For AI calls: a `GROQ_API_KEY` (create one at [console.groq.com](https://console.groq.com)).
+**Requirements:** Node.js 20+, [GitHub CLI](https://cli.github.com/) (`gh`), Git. No API keys.
 
 ```bash
 npm install -g rig-cli
@@ -36,20 +36,51 @@ npm install -g rig-cli
 
 ### `rig create-issue`
 
-Describe an issue in plain text. AI structures it into a proper GitHub issue with title, body, and labels, shows a preview, and files it after you confirm. For non-interactive use (scripts, coding agents), pass `--file` and `--yes`.
+File a structured issue file verbatim. The file format: optional YAML front matter with labels, one H1 title, then the body. The body must contain the `## Problem / Motivation`, `## Implementation Details`, and `## Acceptance Criteria` sections; rig exits nonzero naming any missing section. Shows a preview and files after you confirm; pass `--yes` for non-interactive use.
+
+```markdown
+---
+labels: [backend, enhancement]
+---
+# cli: Add clipboard support
+
+## Problem / Motivation
+...
+
+## Implementation Details
+...
+
+## Acceptance Criteria
+...
+```
 
 ```bash
-rig create-issue
 rig create-issue --file issue.md --yes
+rig create-issue --file issue.md --label P1 --label backend
 ```
 
 ### `rig story`
 
-Paste a planning spec or PRD. AI creates a parent story issue plus atomic child issues, each sized for one branch and one PR. You confirm before each step. For non-interactive use, pass `--file` and `--yes`.
+File a story file: a parent story plus its pre-decomposed child issues. Children are marked with `## Issue: <title>` headings, each with an optional `labels: [...]` first line. Each child is filed with a `Part of #<parent>` reference.
+
+```markdown
+---
+labels: [feature]
+---
+# Build the widget system
+
+Story body...
+
+## Issue: Add the widget model
+labels: [backend]
+Child body...
+
+## Issue: Wire the widget API
+Child body...
+```
 
 ```bash
-rig story
-rig story --file spec.md --yes
+rig story --file story.md --yes
 ```
 
 ### `rig grab`
@@ -63,7 +94,7 @@ rig grab      # pick from open issues
 
 ### `rig branch`
 
-Create a working branch for an issue off the latest base branch (fetched from origin when available), then push it to origin with upstream tracking. Branches follow `<type>/issue-<n>-<slug>` in lowercase kebab-case: the type comes from the issue's type label (`bug` → `fix`, `feature` → `feat`, etc.), and the slug is written by the AI from the issue content (falls back to a title-derived slug). If a branch for the issue already exists, switches to it instead.
+Create a working branch for an issue off the latest base branch (fetched from origin when available), then push it to origin with upstream tracking. Branches follow `<type>/issue-<n>-<slug>` in lowercase kebab-case: the type comes from the issue's type label (`bug` → `fix`, `feature` → `feat`, etc.), and the slug is derived from the issue title. If a branch for the issue already exists, switches to it instead.
 
 ```
 fix/issue-21-handle-empty-clipboard
@@ -76,13 +107,14 @@ rig branch 21
 
 ### `rig pr`
 
-Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history.
+Create or update a pull request for the current branch. The linked issue comes from `--issue`, or from the branch name (`issue-42-slug`, `42-slug`, or `feat/42-slug`). The PR body is generated from the issue and commit history, or taken verbatim from `--body-file` — use that to give reviewers an agent-drafted review guide instead of a template.
 
 Date-like branch names (`2025-08-cleanup`, `8-15-hotfix`) are not treated as issue numbers — pass `--issue` for those. The command refuses to run on `main`, `master`, or the configured base branch.
 
 ```bash
 rig pr
 rig pr --issue 42
+rig pr --body-file pr-body.md
 ```
 
 ### `rig setup-labels`
@@ -97,23 +129,13 @@ rig setup-labels
 
 ## Configuration
 
-Create `.rig.yml` in your project root. All fields are optional; missing values use defaults.
+Create `.rig.yml` in your project root. All fields are optional; missing values use defaults. No environment variables are required.
 
 ```yaml
-agent:
-  provider: groq     # Groq API (default)
-  model: openai/gpt-oss-120b  # model ID to request (default: provider-specific)
-  timeout: 120       # seconds per AI call
-
 git:
   base_branch: main  # auto-detected if omitted (main or master)
 
 defaultLabels: []    # labels added to every created issue
-
-# Optional: a markdown style guide injected into every AI prompt, so
-# generated issues follow your writing rules. Relative to the project
-# root; ~/ expands to your home directory.
-style_file: ~/style/writing-rules.md
 
 verbose: false
 ```
@@ -122,23 +144,13 @@ verbose: false
 
 ## Claude Code skill
 
-The repo ships an agent-facing skill at [`.claude/skills/rig/SKILL.md`](./.claude/skills/rig/SKILL.md) that teaches Claude Code the rig workflow: which commands to run for "pick up issue 22" or "open a PR", and which flags (`--file`, `--yes`) keep the interactive commands from hanging under an agent. Copy the `rig` folder into your own project's `.claude/skills/` directory to use it there.
-
----
-
-## AI Providers
-
-**Groq** (default): Groq's hosted open models over the OpenAI-compatible chat-completions API. Requires `GROQ_API_KEY`. Defaults to `openai/gpt-oss-120b`; override with `agent.model` in `.rig.yml`.
-
-Providers are small subclasses of `OpenAICompatProvider` (`src/services/llm-provider.ts`) — adding another vendor is a name, base URL, API-key env var, and default model.
-
-AI is used only for text generation — issue bodies and spec decomposition. rig never runs an agent on your code.
+The repo ships an agent-facing skill at [`.claude/skills/rig/SKILL.md`](./.claude/skills/rig/SKILL.md) that teaches Claude Code the rig workflow: how to draft the structured issue and story files, which commands to run for "pick up issue 22" or "open a PR", and which flags (`--file`, `--yes`) keep the interactive commands from hanging under an agent. Copy the `rig` folder into your own project's `.claude/skills/` directory to use it there.
 
 ---
 
 ## Disclaimer
 
-rig-cli is an unofficial third-party tool created by Zach Stecko. Not affiliated with or endorsed by Groq. You must have your own API key and comply with your model provider's terms of service.
+rig-cli is an unofficial third-party tool created by Zach Stecko.
 
 ## License
 

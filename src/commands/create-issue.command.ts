@@ -1,47 +1,31 @@
 import { BaseCommand } from './base-command.js';
-import { Logger } from '../services/logger.service.js';
-import { ConfigManager } from '../services/config-manager.service.js';
-import { GitService } from '../services/git.service.js';
-import { GitHubService } from '../services/github.service.js';
-import { GuardService } from '../services/guard.service.js';
-import { LLMService } from '../services/llm.service.js';
+import { parseIssueFile, IssueFileError, REQUIRED_ISSUE_SECTIONS } from '../services/issue-file.service.js';
 import { isValidLabel, getAllValidLabels } from '../types/labels.types.js';
 
 /**
- * CreateIssueCommand handles interactive issue creation with LLM-powered structuring.
+ * CreateIssueCommand files an agent-authored issue file on GitHub.
+ *
+ * The calling coding agent drafts the full issue (it has the repo
+ * context); rig validates the format and files it verbatim.
  *
  * Workflow:
- * 1. Prompt user for raw issue description (multiline)
- * 2. Use LLM to structure description into proper GitHub issue format
- * 3. Display structured issue preview
+ * 1. Read the structured issue file (--file)
+ * 2. Parse: front-matter labels, H1 title, body; validate sections
+ * 3. Display preview
  * 4. Confirm and create issue on GitHub
  */
 export class CreateIssueCommand extends BaseCommand {
-  private llm: LLMService;
-
-  constructor(
-    logger: Logger,
-    config: ConfigManager,
-    git: GitService,
-    github: GitHubService,
-    guard: GuardService,
-    projectRoot?: string
-  ) {
-    super(logger, config, git, github, guard, projectRoot);
-    this.llm = new LLMService(undefined, this.config.get(), this.projectRoot);
-  }
-
   /**
    * Executes the create issue command.
    *
    * @param options - Command options
-   * @param options.file - Read the description from this file instead of prompting
+   * @param options.file - The structured issue file to read
+   * @param options.label - Labels to apply, in addition to front matter
    * @param options.yes - Skip the confirmation prompt (for non-interactive use)
    * @throws Error if preconditions fail or issue creation fails
    */
-  async execute(options?: { file?: string; yes?: boolean }): Promise<void> {
+  async execute(options?: { file?: string; label?: string[]; yes?: boolean }): Promise<void> {
     const rigConfig = this.config.get();
-    const verbose = rigConfig.verbose || false;
 
     // Check preconditions
     await this.guard.requireGhAuth();
@@ -49,67 +33,52 @@ export class CreateIssueCommand extends BaseCommand {
     this.logger.header('Create GitHub Issue');
     console.log('');
 
-    this.logger.config('Agent provider', rigConfig.agent.provider || 'groq');
-    this.logger.config('Verbose', verbose);
-    const defaultLabels = rigConfig.defaultLabels || [];
-
-    // Validate labels against defined constants
-    if (defaultLabels.length > 0) {
-      const invalidLabels = defaultLabels.filter(label => !isValidLabel(label));
-      if (invalidLabels.length > 0) {
-        this.logger.error(`Invalid labels in config: ${invalidLabels.join(', ')}`);
-        this.logger.info('Valid labels are defined in src/types/labels.types.ts');
-        this.logger.info(`Examples: ${getAllValidLabels().slice(0, 10).join(', ')}, ...`);
-        process.exit(1);
-        return; // For testing
-      }
-      this.logger.config('Default labels', defaultLabels.join(', '));
-    }
-
-    // Check LLM availability before asking the user to type anything,
-    // so a missing CLI or API key fails fast instead of after input.
-    const llmAvailable = await this.llm.isAvailable();
-    this.logger.config('Agent available', llmAvailable);
-    if (!llmAvailable) {
-      this.logger.error('Agent is not available. Check your .rig.yml provider setting and authentication.');
+    if (!options?.file) {
+      this.logger.error('create-issue requires --file <path> with the structured issue.');
+      this.logger.dim('Format: optional "labels: [...]" front matter, one H1 title, then the body.');
+      this.logger.dim(`Required body sections: ${REQUIRED_ISSUE_SECTIONS.map(s => `## ${s}`).join(', ')}`);
       process.exit(1);
       return; // For testing
     }
 
-    // Get raw description from the file or the user
-    const rawDescription = await this.readMultilineInput(
-      options?.file,
-      'Describe the issue in your own words (multiline input):'
-    );
-
-    if (!rawDescription.trim()) {
-      this.logger.warn('No description provided. Aborting.');
+    const content = await this.readMultilineInput(options.file, '');
+    if (!content.trim()) {
+      this.logger.warn('No issue content provided. Aborting.');
       return;
     }
 
-    this.logger.config('Description length', `${rawDescription.length} chars`);
-
-    // Structure the issue using LLM
-    let structured;
+    // Parse the structured file; the body is filed verbatim
+    let issue;
     try {
-      this.logger.command(`${this.llm.providerName} chat/completions`);
-      const startTime = Date.now();
-      structured = await this.logger.spinner(
-        this.llm.structureIssue(rawDescription),
-        `Structuring your issue with ${this.llm.providerName}...`
-      );
-      this.logger.timing('Issue structuring', Date.now() - startTime);
+      issue = parseIssueFile(content);
     } catch (error) {
-      this.logger.error(`Failed to structure issue: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      if (error instanceof IssueFileError) {
+        this.logger.error(error.message);
+        process.exit(1);
+        return; // For testing
+      }
+      throw error;
+    }
+
+    // Merge labels: front matter + --label flags + config defaults
+    const defaultLabels = rigConfig.defaultLabels || [];
+    const allLabels = [...new Set([...issue.labels, ...(options.label || []), ...defaultLabels])];
+
+    // Validate labels against defined constants
+    const invalidLabels = allLabels.filter(label => !isValidLabel(label));
+    if (invalidLabels.length > 0) {
+      this.logger.error(`Invalid labels: ${invalidLabels.join(', ')}`);
+      this.logger.info('Valid labels are defined in src/types/labels.types.ts');
+      this.logger.info(`Examples: ${getAllValidLabels().slice(0, 10).join(', ')}, ...`);
       process.exit(1);
       return; // For testing
     }
 
     // Display preview
-    this.displayPreview(structured.title, structured.body);
+    this.displayPreview(issue.title, issue.body);
 
     // Confirm creation
-    const confirmed = options?.yes || (await this.confirm('\nCreate this issue? (y/n): '));
+    const confirmed = options.yes || (await this.confirm('\nCreate this issue? (y/n): '));
     if (!confirmed) {
       this.logger.warn('Issue creation cancelled.');
       return;
@@ -117,15 +86,10 @@ export class CreateIssueCommand extends BaseCommand {
 
     // Create the issue
     try {
-      // Merge LLM-suggested labels with default labels from config
-      const llmLabels = structured.labels || [];
-      const allLabels = [...new Set([...defaultLabels, ...llmLabels])];
       if (allLabels.length > 0) {
         this.logger.info(`Labels: ${allLabels.join(', ')}`);
-      }
 
-      // Ensure all labels exist in the repo before creating the issue
-      if (allLabels.length > 0) {
+        // Ensure all labels exist in the repo before creating the issue
         const createdLabels = await this.github.ensureLabels(allLabels);
         if (createdLabels.length > 0) {
           this.logger.info(`Created missing labels: ${createdLabels.join(', ')}`);
@@ -134,8 +98,8 @@ export class CreateIssueCommand extends BaseCommand {
 
       this.logger.command('gh issue create');
       const issueNumber = await this.github.createIssue({
-        title: structured.title,
-        body: structured.body,
+        title: issue.title,
+        body: issue.body,
         labels: allLabels.length > 0 ? allLabels : undefined,
       });
 
@@ -152,7 +116,7 @@ export class CreateIssueCommand extends BaseCommand {
   }
 
   /**
-   * Displays a preview of the structured issue.
+   * Displays a preview of the parsed issue.
    *
    * @param title - Issue title
    * @param body - Issue body
@@ -163,11 +127,6 @@ export class CreateIssueCommand extends BaseCommand {
     console.log('');
     this.logger.info('Title:');
     console.log(`  ${title}`);
-
-    // Warn if title is very long
-    if (title.length > 200) {
-      this.logger.warn('  Title is quite long (' + title.length + ' characters)');
-    }
 
     console.log('');
     this.logger.info('Body:');

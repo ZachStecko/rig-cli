@@ -130,10 +130,9 @@ export class PrTemplateService {
   /**
    * Extracts a short explanation of what the issue solves or helps fix.
    *
-   * Prefers the issue's Problem / Motivation section (rig-structured issues
-   * always have one — the issue-writing prompt directs the LLM to keep it
-   * to two paragraphs, so the section is used whole); falls back to the
-   * prose before the first heading.
+   * Prefers the issue's Problem / Motivation section (rig-filed issues
+   * always have one — create-issue validates it, so the section is used
+   * whole); falls back to the prose before the first heading.
    *
    * @private
    * @param body - Issue body text

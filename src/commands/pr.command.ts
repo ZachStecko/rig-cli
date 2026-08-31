@@ -42,8 +42,9 @@ export class PrCommand extends BaseCommand {
    *
    * @param options - Command options
    * @param options.issue - Optional issue number (overrides branch-name detection)
+   * @param options.bodyFile - Optional file whose content becomes the PR body verbatim
    */
-  async execute(options?: { issue?: string }): Promise<void> {
+  async execute(options?: { issue?: string; bodyFile?: string }): Promise<void> {
     // Check GitHub authentication
     await this.guard.requireGhAuth();
 
@@ -114,9 +115,21 @@ export class PrCommand extends BaseCommand {
       await this.git.push();
       console.log('');
 
-      // Step 2: Generate PR body
-      this.logger.step(2, 3, 'Generating PR body from template...');
-      const prBody = await this.prTemplate.generatePrBody(issueData);
+      // Step 2: Resolve the PR body — an agent-drafted body file wins
+      // over the template, since the agent knows the actual diff.
+      let prBody: string;
+      if (options?.bodyFile) {
+        this.logger.step(2, 3, `Reading PR body from ${options.bodyFile}...`);
+        prBody = await this.readMultilineInput(options.bodyFile, '');
+        if (!prBody.trim()) {
+          this.logger.error(`PR body file '${options.bodyFile}' is empty.`);
+          process.exit(1);
+          return; // For testing
+        }
+      } else {
+        this.logger.step(2, 3, 'Generating PR body from template...');
+        prBody = await this.prTemplate.generatePrBody(issueData);
+      }
       console.log('');
 
       // Step 3: Check if PR already exists for this branch
